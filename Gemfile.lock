@@ -119,11 +119,11 @@ DEPENDENCIES
   irb
   logica_rb!
   minitest (~> 6.0)
-  pg (>= 1.6)
+  pg
   rake (~> 13.0)
   rubocop (~> 1.21)
   rubocop-rails-omakase
-  sqlite3 (>= 2.8)
+  sqlite3
 
 CHECKSUMS
   activesupport (8.1.1) sha256=5e92534e8d0c8b8b5e6b16789c69dbea65c1d7b752269f71a39422e9546cea67

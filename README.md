@@ -1,55 +1,110 @@
 # LogicaRb
 
-Ruby wrapper/runtime for Logica with SQLite and PostgreSQL support.
+Pure Logica -> SQL transpiler for SQLite and PostgreSQL. This gem **does not** connect to databases or execute SQL.
 
 ## Engine support
 
 - Supported: SQLite (`@Engine("sqlite")`), PostgreSQL (`@Engine("psql")`).
-- Default engine follows upstream Logica (duckdb). DuckDB is **not** supported here, so any program that resolves to duckdb at execution will raise `UnsupportedEngineError("duckdb")`.
-- To avoid that, either add `@Engine("sqlite")` / `@Engine("psql")`, or pass `--logica_default_engine=sqlite` on the CLI.
+- Default engine follows upstream Logica: `duckdb` when `@Engine` is absent.
+- DuckDB is **not** supported here, so any program that resolves to duckdb raises `UnsupportedEngineError("duckdb")`.
+- To avoid that, add `@Engine("sqlite")` / `@Engine("psql")`, pass `--engine=sqlite|psql`, or set `--logica_default_engine=sqlite`.
 
-## Usage
+## CLI usage
 
-Run a predicate:
-
-```bash
-exe/logica path/to/program.l run Test
+```
+logica <l file | -> <command> [predicate(s)] [options] [-- user_flags...]
 ```
 
-Print SQL:
+Commands:
+- `parse`        -> prints AST JSON
+- `infer_types`  -> prints typing JSON (psql dialect)
+- `show_signatures` -> prints predicate signatures (psql dialect)
+- `print <pred>` -> prints SQL (default `--format=script`)
+- `plan <pred>`  -> prints plan JSON (alias for `--format=plan`)
+- `validate-plan <plan.json or ->` -> validates plan JSON (schema + semantics)
+
+Options:
+- `--engine=sqlite|psql`
+- `--format=query|script|plan`
+- `--import-root=PATH`
+- `--output=FILE`
+- `--no-color`
+
+Examples:
 
 ```bash
-exe/logica path/to/program.l print Test
+exe/logica program.l print Test --engine=sqlite --format=script
+exe/logica program.l plan Test
+exe/logica validate-plan /tmp/plan.json
+exe/logica - print Test -- --my_flag=123
 ```
 
-PostgreSQL connection string is read from `LOGICA_PSQL_CONNECTION`.
-
-
-## Testing with PostgreSQL
-
-PostgreSQL tests are enabled when `LOGICA_PSQL_CONNECTION` is set.
-
-Example (local Docker):
+Query vs script example:
 
 ```bash
-docker run --rm --name logica-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres -e POSTGRES_DB=logica_test -p 5432:5432 postgres:16
-export LOGICA_PSQL_CONNECTION=postgres://postgres:postgres@localhost:5432/logica_test
-bundle exec rake test
+cat > /tmp/example.l <<'LOGICA'
+@Engine("sqlite");
+Test(x) :- x = 1;
+LOGICA
+
+exe/logica /tmp/example.l print Test --format=query
 ```
 
-Alternative example (pgvector image + one-shot test run):
+```sql
+SELECT
+  1 AS col0
+```
 
 ```bash
-docker run -it --rm -p 5432:5432 -e POSTGRES_DB=logica -e POSTGRES_USER=logica -e POSTGRES_PASSWORD=logica -e PGDATA=/var/lib/postgresql/18/docker pgvector/pgvector:pg18-trixie
-LOGICA_PSQL_CONNECTION=postgresql://logica:logica@localhost:5432/logica bundle exec rake test
+exe/logica /tmp/example.l print Test --format=script
 ```
 
-If the env var is missing, the psql suite is skipped with a clear message.
+```sql
+SELECT
+  1 AS col0;
+```
+
+## Ruby API
+
+```ruby
+compilation = LogicaRb::Transpiler.compile_string(
+  File.read("program.l"),
+  predicate: "Test",
+  engine: "sqlite",
+  user_flags: {"my_flag" => "123"}
+)
+
+sql = compilation.sql("Test", :script)
+plan_json = compilation.plan_json("Test", pretty: true)
+```
+
+Plan docs:
+- `docs/PLAN_SCHEMA.md`
+- `docs/plan.schema.json`
+- `docs/EXECUTOR_GUIDE.md`
 
 ## Development
 
 ```bash
 bundle exec rake test
+bundle exec rake goldens:generate
+```
+
+### DB smoke tests
+
+These tests validate that generated SQL/Plan is executable in real databases (no result assertions; just “no error”).
+
+SQLite:
+
+```bash
+bundle exec rake test:db_smoke_sqlite
+```
+
+Postgres (requires a reachable database):
+
+```bash
+export DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/postgres
+bundle exec rake test:db_smoke_psql
 ```
 
 ## License

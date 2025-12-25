@@ -8,8 +8,8 @@ Gem::Specification.new do |spec|
   spec.authors = ["jasl"]
   spec.email = ["jasl9187@hotmail.com"]
 
-  spec.summary = "Logica compiler/runtime for SQLite and PostgreSQL"
-  spec.description = "Ruby wrapper/runtime for Logica with SQLite and PostgreSQL support."
+  spec.summary = "Logica to SQL transpiler for SQLite and PostgreSQL"
+  spec.description = "Ruby Logica compiler that outputs SQL and execution plans for SQLite and PostgreSQL."
   spec.homepage = "https://github.com/jasl/logica_rb"
   spec.license = "Apache-2.0"
   spec.required_ruby_version = ">= 3.4.0"
