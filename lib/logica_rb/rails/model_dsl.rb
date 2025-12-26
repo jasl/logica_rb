@@ -3,88 +3,100 @@
 module LogicaRb
   module Rails
     module ModelDSL
-      def logica_query(name, file:, predicate:, engine: nil, format: :query, flags: {})
-        logica_queries[name.to_sym] = {
+      def self.extended(base)
+        base.class_attribute :logica_queries, default: {}, instance_accessor: false
+      end
+
+      def logica_query(name, file:, predicate:, engine: :auto, format: :query, flags: {}, as: nil, import_root: nil)
+        name = name.to_sym
+
+        definition = QueryDefinition.new(
+          name: name,
           file: file,
           predicate: predicate,
           engine: engine,
           format: format,
           flags: flags,
-        }
-      end
-
-      def logica_sql(name, engine: nil, format: nil, flags: nil, user_flags: nil, import_root: nil)
-        definition = logica_queries.fetch(name.to_sym) do
-          raise ArgumentError, "Unknown logica query: #{name}"
-        end
-
-        compilation = compile_logica_definition(
-          definition,
-          engine: engine,
-          format: format,
-          flags: flags,
-          user_flags: user_flags,
+          as: as,
           import_root: import_root
         )
 
-        compilation.sql(compilation_format(definition, format))
+        self.logica_queries = logica_queries.merge(name => definition)
+        definition
       end
 
-      def logica_result(name, **override)
-        sql = logica_sql(name, **override)
-        ActiveRecordExecutor.new(connection: connection).select_all(sql)
+      def logica(name, connection: nil, **overrides)
+        name = name.to_sym
+        base_definition = logica_queries.fetch(name) { raise ArgumentError, "Unknown logica query: #{name}" }
+
+        connection ||= ActiveRecord::Base.connection
+        cfg = LogicaRb::Rails.configuration
+
+        resolved_import_root =
+          if overrides.key?(:import_root)
+            overrides[:import_root]
+          else
+            base_definition.import_root || cfg.import_root
+          end
+
+        resolved_engine = resolve_engine(
+          overrides.key?(:engine) ? overrides[:engine] : base_definition.engine,
+          connection: connection,
+          cfg: cfg
+        )
+
+        resolved_flags = (base_definition.flags || {}).merge(overrides[:flags] || {})
+
+        definition = base_definition.with(
+          file: overrides.fetch(:file, base_definition.file),
+          predicate: overrides.fetch(:predicate, base_definition.predicate),
+          format: overrides.fetch(:format, base_definition.format || :query).to_sym,
+          engine: resolved_engine,
+          flags: resolved_flags,
+          as: overrides.fetch(:as, base_definition.as),
+          import_root: resolved_import_root
+        )
+
+        cache = cfg.cache ? LogicaRb::Rails.cache : nil
+
+        Query.new(
+          definition,
+          connection: connection,
+          executor: Executor.new(connection: connection),
+          cache: cache
+        )
+      end
+
+      def logica_sql(name, **opts)
+        logica(name, **opts).sql
+      end
+
+      def logica_result(name, **opts)
+        logica(name, **opts).result
+      end
+
+      def logica_relation(name, **opts)
+        logica(name, **opts).relation(model: self)
+      end
+
+      def logica_records(name, **opts)
+        logica(name, **opts).records(model: self)
       end
 
       private
 
-      def logica_queries
-        @logica_queries ||= {}
-      end
+      def resolve_engine(engine, connection:, cfg:)
+        engine = engine.to_sym if engine.is_a?(String) && !engine.empty?
 
-      def compilation_format(definition, format)
-        (format || definition.fetch(:format, LogicaRb::Rails.configuration.default_format || :query)).to_sym
-      end
-
-      def compile_logica_definition(definition, engine:, format:, flags:, user_flags:, import_root:)
-        cfg = LogicaRb::Rails.configuration
-
-        resolved_import_root = import_root || cfg.import_root
-        resolved_import_root = resolved_import_root.to_path if resolved_import_root.respond_to?(:to_path)
-
-        resolved_engine =
-          (engine || definition[:engine] || cfg.default_engine)&.to_s ||
-            EngineDetector.detect(connection)
-
-        resolved_user_flags = {}
-        resolved_user_flags.merge!(definition.fetch(:flags, {}))
-        resolved_user_flags.merge!(flags || {})
-        resolved_user_flags.merge!(user_flags || {})
-
-        file = definition.fetch(:file).to_s
-        file_path = resolve_logica_file_path(file, import_root: resolved_import_root)
-
-        LogicaRb::Transpiler.compile_file(
-          file_path,
-          predicates: definition.fetch(:predicate),
-          engine: resolved_engine,
-          user_flags: resolved_user_flags,
-          import_root: resolved_import_root
-        )
-      end
-
-      def resolve_logica_file_path(file, import_root:)
-        return file if file.start_with?("/")
-        return file if import_root.nil?
-
-        root_for_path =
-          if import_root.is_a?(Array)
-            import_root.first
+        resolved =
+          case engine
+          when nil, :auto
+            cfg.default_engine&.to_s || EngineDetector.detect(connection)
           else
-            import_root
+            engine.to_s
           end
-        return file if root_for_path.nil? || root_for_path.to_s.empty?
 
-        File.join(root_for_path.to_s, file)
+        resolved
       end
     end
   end

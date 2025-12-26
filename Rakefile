@@ -3,7 +3,9 @@
 require "bundler/gem_tasks"
 require "minitest/test_task"
 
-Minitest::TestTask.create
+Minitest::TestTask.create do |t|
+  t.test_globs = ["test/*_test.rb", "test/db_smoke/**/*_test.rb"]
+end
 
 require "rubocop/rake_task"
 
@@ -12,6 +14,17 @@ RuboCop::RakeTask.new
 task default: %i[test rubocop]
 
 namespace :test do
+  desc "Run Rails integration tests (SQLite)"
+  task :rails_sqlite do
+    sh "bundle exec ruby -Itest test/rails/smoke_test.rb test/rails/query_relation_test.rb " \
+       "test/rails/query_result_test.rb test/rails/cache_reload_test.rb"
+  end
+
+  desc "Run Rails integration tests (Postgres, requires DATABASE_URL)"
+  task :rails_psql do
+    sh "bundle exec ruby -Itest test/rails/query_psql_smoke_test.rb"
+  end
+
   desc "Run SQLite DB smoke tests"
   task :db_smoke_sqlite do
     sh({ "LOGICA_DB_SMOKE" => "1" }, "bundle exec ruby -Itest test/db_smoke/sqlite_smoke_test.rb")

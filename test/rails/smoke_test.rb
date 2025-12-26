@@ -16,8 +16,11 @@ class RailsIntegrationSmokeTest < Minitest::Test
     ActiveSupport.run_load_hooks(:active_record, base)
 
     assert_respond_to base, :logica_query
+    assert_respond_to base, :logica
     assert_respond_to base, :logica_sql
     assert_respond_to base, :logica_result
+    assert_respond_to base, :logica_relation
+    assert_respond_to base, :logica_records
   end
 
   def test_engine_detector
@@ -36,48 +39,9 @@ class RailsIntegrationSmokeTest < Minitest::Test
     assert_equal "psql", LogicaRb::Rails::EngineDetector.detect(psql_conn)
   end
 
-  def test_model_dsl_compiles_and_executes_via_executor
+  def test_executor_exec_script_uses_raw_drivers_when_present
     begin
       require "active_support/lazy_load_hooks"
-    rescue LoadError
-      skip "activesupport not installed"
-    end
-
-    require "tempfile"
-    require "logica_rb/rails"
-
-    file = Tempfile.new(["logica", ".l"])
-    begin
-      file.write(<<~LOGICA)
-        Test(x) :- x = 1;
-      LOGICA
-      file.flush
-
-      conn = Struct.new(:adapter_name).new("SQLite")
-      def conn.select_all(sql)
-        ["select_all", sql]
-      end
-
-      base = Class.new
-      base.define_singleton_method(:connection) { conn }
-      ActiveSupport.run_load_hooks(:active_record, base)
-
-      base.logica_query(:one, file: file.path, predicate: "Test")
-
-      sql = base.logica_sql(:one)
-      assert_includes sql, "SELECT"
-
-      result = base.logica_result(:one)
-      assert_equal "select_all", result[0]
-    ensure
-      file.close
-      file.unlink
-    end
-  end
-
-  def test_active_record_executor_exec_script_uses_raw_drivers_when_present
-    begin
-    require "active_support/lazy_load_hooks"
     rescue LoadError
       skip "activesupport not installed"
     end
@@ -121,7 +85,7 @@ class RailsIntegrationSmokeTest < Minitest::Test
       end
     end.new(sqlite_raw)
 
-    LogicaRb::Rails::ActiveRecordExecutor.new(connection: sqlite_conn).exec_script("SELECT 1;")
+    LogicaRb::Rails::Executor.new(connection: sqlite_conn).exec_script("SELECT 1;")
     assert_equal ["SELECT 1;"], sqlite_raw.batches
 
     pg_raw = ::PG::Connection.new
@@ -131,7 +95,7 @@ class RailsIntegrationSmokeTest < Minitest::Test
       end
     end.new(pg_raw)
 
-    LogicaRb::Rails::ActiveRecordExecutor.new(connection: pg_conn).exec_script("SELECT 2;")
+    LogicaRb::Rails::Executor.new(connection: pg_conn).exec_script("SELECT 2;")
     assert_equal ["SELECT 2;"], pg_raw.execs
   end
 end

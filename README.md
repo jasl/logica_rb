@@ -80,6 +80,77 @@ sql = compilation.sql("Test", :script)
 plan_json = compilation.plan_json("Test", pretty: true)
 ```
 
+## Rails Integration (optional)
+
+Rails integration is **opt-in** and only loaded after:
+
+```ruby
+require "logica_rb"
+require "logica_rb/rails"
+```
+
+### Configuration
+
+```ruby
+# config/initializers/logica_rb.rb
+require "logica_rb/rails"
+
+LogicaRb::Rails.configure do |c|
+  c.import_root = Rails.root.join("app/logica")
+  c.cache = true
+  c.cache_mode = :mtime
+  c.default_engine = nil # auto-detect from the connection when nil
+end
+```
+
+Configuration API:
+- `LogicaRb::Rails.configure { |c| ... }`
+- `LogicaRb::Rails.configuration`
+- `LogicaRb::Rails.cache` / `LogicaRb::Rails.clear_cache!`
+
+Caching is enabled by default. In Rails development, the Railtie clears the compilation cache on each reload via `ActiveSupport::Reloader.to_prepare`.
+
+### Model DSL
+
+```ruby
+class User < ApplicationRecord
+  logica_query :active_users, file: "users.l", predicate: "ActiveUsers"
+end
+```
+
+DSL API:
+- `logica_query(name, file:, predicate:, engine: :auto, format: :query, flags: {}, as: nil, import_root: nil)`
+- `logica(name, connection: nil, **overrides)` (returns `LogicaRb::Rails::Query`)
+- `logica_sql`, `logica_result`, `logica_relation`, `logica_records`
+
+### Consumption modes
+
+Relation (recommended, for parameterization via ActiveRecord):
+
+```ruby
+rel = User.logica_relation(:active_users)
+rel = rel.where("logica_activeusers.age >= ?", 18).order("logica_activeusers.age DESC")
+rel.to_a
+```
+
+Result (returns `ActiveRecord::Result`, useful when you don't need a model):
+
+```ruby
+User.logica_result(:active_users) # => ActiveRecord::Result
+```
+
+Records (returns model instances via `find_by_sql`):
+
+```ruby
+User.logica_records(:active_users) # => [#<User ...>, ...]
+```
+
+Advanced: `User.logica(:active_users)` returns a `LogicaRb::Rails::Query` with `sql`, `plan_json`, `result`, `relation`, `records`, and `cte`.
+
+### Safety notes
+
+- `LogicaRb::Rails::Query#relation` uses `Arel.sql` to wrap the compiled subquery. Treat compilation output as trusted code, and do **not** pass untrusted user input into Logica flags without validation.
+
 Plan docs:
 - `docs/PLAN_SCHEMA.md`
 - `docs/plan.schema.json`

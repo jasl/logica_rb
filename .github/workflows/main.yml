@@ -45,9 +45,9 @@ jobs:
           bundler-cache: true
       - name: Run tests
         run: bundle exec rake test
-      - name: Run SQLite smoke tests
-        run: bundle exec rake test:db_smoke_sqlite
-      - name: Run Postgres smoke tests
+      - name: Run Rails integration tests (SQLite)
+        run: bundle exec rake test:rails_sqlite
+      - name: Run Rails integration tests (Postgres)
         env:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
-        run: bundle exec rake test:db_smoke_psql
+        run: bundle exec rake test:rails_psql

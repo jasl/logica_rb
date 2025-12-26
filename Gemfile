@@ -13,5 +13,9 @@ gem "minitest", "~> 6.0"
 gem "rubocop", "~> 1.21"
 gem "rubocop-rails-omakase", require: false
 
+gem "activesupport", ">= 7.1", require: false
+gem "activerecord", ">= 7.1", require: false
+gem "railties", ">= 7.1", require: false
+
 gem "sqlite3", require: false
 gem "pg", require: false

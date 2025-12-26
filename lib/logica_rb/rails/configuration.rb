@@ -4,9 +4,9 @@ module LogicaRb
   module Rails
     Configuration = Data.define(
       :import_root,
-      :default_format,
-      :default_engine,
-      :cache
+      :cache,
+      :cache_mode,
+      :default_engine
     )
   end
 end
