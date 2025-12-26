@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+@Engine("duckdb");
 Data() = Join(['{"a": 1, "b": [1,2]', ' "c": {"d": "A", "e": [1,2,3]}}'], ",");
 Data() = '{"a": 2, "b": [3,4], "c": {"d": "B", "e": [4,5,6]}}';
 

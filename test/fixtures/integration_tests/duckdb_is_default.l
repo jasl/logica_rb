@@ -14,5 +14,6 @@
 # limitations under the License.
 
 # Only duckdb has UniqueNumber function.
+@Engine("duckdb");
 Test(fourty_two? Count= UniqueNumber()) distinct :-
   i in Range(42);

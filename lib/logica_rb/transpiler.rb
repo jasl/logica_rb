@@ -105,26 +105,26 @@ module LogicaRb
       trimmed.join("\n\n") + "\n"
     end
 
-    def self.normalize_sql_text(text)
-      text.to_s.sub(/\n+\z/, "") + "\n"
-    end
-
-    def self.resolve_engine(parsed_rules, user_flags:, engine_override: nil)
-      return engine_override if engine_override
-
-      default_engine = user_flags.fetch("logica_default_engine", "duckdb")
-      annotations = Compiler::Annotations.extract_annotations(parsed_rules, restrict_to: ["@Engine"])
-      engines = annotations.fetch("@Engine").keys
-      return default_engine if engines.empty?
-      if engines.length > 1
-        rule_text = annotations["@Engine"].values.first["__rule_text"]
-        raise Compiler::RuleTranslate::RuleCompileException.new(
-          "Single @Engine must be provided. Provided: #{engines}",
-          rule_text
-        )
+      def self.normalize_sql_text(text)
+        text.to_s.sub(/\n+\z/, "") + "\n"
       end
-      engines.first
-    end
+
+      def self.resolve_engine(parsed_rules, user_flags:, engine_override: nil)
+        return engine_override if engine_override
+
+        default_engine = user_flags.fetch("logica_default_engine", "sqlite")
+        annotations = Compiler::Annotations.extract_annotations(parsed_rules, restrict_to: ["@Engine"])
+        engines = annotations.fetch("@Engine").keys
+        return default_engine if engines.empty?
+        if engines.length > 1
+          rule_text = annotations["@Engine"].values.first["__rule_text"]
+          raise Compiler::RuleTranslate::RuleCompileException.new(
+            "Single @Engine must be provided. Provided: #{engines}",
+            rule_text
+          )
+        end
+        engines.first
+      end
 
     def self.rewrite_engine_annotations(parsed_rules, engine_override)
       rules = LogicaRb::Util.deep_copy(parsed_rules)

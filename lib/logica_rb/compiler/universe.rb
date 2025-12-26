@@ -113,18 +113,18 @@ module LogicaRb
         "@CompileAsUdf", "@ResetFlagValue", "@Dataset", "@AttachDatabase",
         "@Engine", "@Recursive", "@Iteration", "@BareAggregation",
         "@DifferentiallyPrivate",
-      ].freeze
+        ].freeze
 
-      attr_reader :annotations, :user_flags, :flag_values, :default_engine
+        attr_reader :annotations, :user_flags, :flag_values, :default_engine
 
-      def initialize(rules, user_flags)
-        @default_engine = user_flags.key?("logica_default_engine") ? user_flags["logica_default_engine"] : "duckdb"
-        @annotations = self.class.extract_annotations(rules, restrict_to: ["@DefineFlag", "@ResetFlagValue"])
-        @user_flags = user_flags
-        @flag_values = build_flag_values
-        @annotations.merge!(self.class.extract_annotations(rules, flag_values: @flag_values))
-        check_annotated_objects(rules)
-      end
+        def initialize(rules, user_flags)
+          @default_engine = user_flags.key?("logica_default_engine") ? user_flags["logica_default_engine"] : "sqlite"
+          @annotations = self.class.extract_annotations(rules, restrict_to: ["@DefineFlag", "@ResetFlagValue"])
+          @user_flags = user_flags
+          @flag_values = build_flag_values
+          @annotations.merge!(self.class.extract_annotations(rules, flag_values: @flag_values))
+          check_annotated_objects(rules)
+        end
 
       def preamble
         preamble = ""

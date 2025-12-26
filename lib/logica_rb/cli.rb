@@ -183,12 +183,12 @@ module LogicaRb
           help
           version
 
-        Options:
-          --engine=sqlite|psql       Override @Engine/default.
-          --format=query|script|plan Output format for print.
-          --import-root=PATH         Override LOGICAPATH import root.
-          --output=FILE              Write output to file (stdout by default).
-          --no-color                 Disable ANSI color output.
+	        Options:
+	          --engine=sqlite|psql       Override @Engine/default (default sqlite).
+	          --format=query|script|plan Output format for print.
+	          --import-root=PATH         Override LOGICAPATH import root.
+	          --output=FILE              Write output to file (stdout by default).
+	          --no-color                 Disable ANSI color output.
 
         User flags:
           Use -- to separate Logica flags (defined by @DefineFlag) from CLI options.

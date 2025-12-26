@@ -5,9 +5,9 @@ Pure Logica -> SQL transpiler for SQLite and PostgreSQL. This gem **does not** c
 ## Engine support
 
 - Supported: SQLite (`@Engine("sqlite")`), PostgreSQL (`@Engine("psql")`).
-- Default engine follows upstream Logica: `duckdb` when `@Engine` is absent.
+- Default engine in LogicaRb: `sqlite` (upstream Logica defaults to `duckdb` when `@Engine` is absent).
 - DuckDB is **not** supported here, so any program that resolves to duckdb raises `UnsupportedEngineError("duckdb")`.
-- To avoid that, add `@Engine("sqlite")` / `@Engine("psql")`, pass `--engine=sqlite|psql`, or set `--logica_default_engine=sqlite`.
+- To target PostgreSQL, add `@Engine("psql")`, pass `--engine=psql`, or set user flag `-- --logica_default_engine=psql`.
 
 ## CLI usage
 
