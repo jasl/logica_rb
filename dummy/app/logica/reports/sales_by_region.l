@@ -1,7 +1,5 @@
 @Engine("sqlite");
 
-import datasets;
-
 SalesByRegion(region:, orders_count:, total_cents:) :-
   `((select
       c.region as region,

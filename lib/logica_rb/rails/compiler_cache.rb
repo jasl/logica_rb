@@ -98,6 +98,7 @@ module LogicaRb
           else
             source_text = definition.source.to_s
             ensure_imports_allowed!(allow_imports: allow_imports, source: source_text)
+            ensure_source_imports_whitelisted!(allow_imports: allow_imports, source: source_text, import_root: import_root_for_parser(import_root))
 
             LogicaRb::Transpiler.compile_string(
               source_text,
@@ -183,8 +184,11 @@ module LogicaRb
         return {} unless allow_imports
         return {} unless cache_mode == :mtime
 
+        ensure_source_import_whitelist_configured!(allow_imports: allow_imports)
+
         parsed_imports = {}
         LogicaRb::Parser.parse_file(source.to_s, import_root: import_root_for_parser(import_root), parsed_imports: parsed_imports)
+        ensure_import_prefixes_allowed!(parsed_imports.keys)
 
         dep_paths = parsed_imports.keys.map do |file_import_str|
           resolve_imported_file_path(file_import_str, import_root: import_root_for_parser(import_root))
@@ -210,6 +214,39 @@ module LogicaRb
         return nil unless imports_present?(source)
 
         raise ArgumentError, "Imports are disabled (pass trusted: true or allow_imports: true to enable)"
+      end
+
+      def ensure_source_imports_whitelisted!(allow_imports:, source:, import_root:)
+        return nil unless allow_imports
+
+        ensure_source_import_whitelist_configured!(allow_imports: allow_imports)
+
+        parsed_imports = {}
+        LogicaRb::Parser.parse_file(source.to_s, import_root: import_root, parsed_imports: parsed_imports)
+        ensure_import_prefixes_allowed!(parsed_imports.keys)
+      end
+
+      def ensure_source_import_whitelist_configured!(allow_imports:)
+        return nil unless allow_imports
+
+        allowed = LogicaRb::Rails.configuration.allowed_import_prefixes
+        allowed_prefixes = Array(allowed).compact.map(&:to_s).map(&:strip).reject(&:empty?)
+        return allowed_prefixes unless allowed_prefixes.empty?
+
+        raise ArgumentError, "allowed_import_prefixes must be configured when allow_imports: true for source queries"
+      end
+
+      def ensure_import_prefixes_allowed!(import_strs)
+        allowed_prefixes = ensure_source_import_whitelist_configured!(allow_imports: true)
+
+        import_strs.each do |import_str|
+          ok = allowed_prefixes.any? { |prefix| import_str == prefix || import_str.start_with?("#{prefix}.") }
+          next if ok
+
+          raise ArgumentError, "Import path is not allowed: #{import_str}"
+        end
+
+        nil
       end
 
       def imports_present?(source)

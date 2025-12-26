@@ -11,6 +11,8 @@ Rails.application.routes.draw do
 
   root "reports#index"
 
-  resources :reports, only: %i[index show]
+  resources :reports do
+    post :run, on: :member
+  end
   resources :custom_queries, only: %i[new create]
 end

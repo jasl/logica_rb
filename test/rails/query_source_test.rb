@@ -68,7 +68,7 @@ class RailsQuerySourceTest < Minitest::Test
     LOGICA
 
     query = LogicaRb::Rails.query(source: source, predicate: "Evil", trusted: false)
-    err = assert_raises(LogicaRb::QueryOnlyViolationError) { query.result }
+    err = assert_raises(LogicaRb::SqlSafety::Violation) { query.result }
     assert_match(/Multiple SQL statements/i, err.message)
   end
 

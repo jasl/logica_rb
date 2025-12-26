@@ -10,6 +10,7 @@ module LogicaRb
         app.config.logica_rb.cache = true if app.config.logica_rb.cache.nil?
         app.config.logica_rb.cache_mode ||= :mtime
         app.config.logica_rb.default_engine ||= :auto
+        app.config.logica_rb.allowed_import_prefixes ||= nil
       end
 
       initializer "logica_rb.active_record" do

@@ -100,6 +100,7 @@ LogicaRb::Rails.configure do |c|
   c.cache = true
   c.cache_mode = :mtime
   c.default_engine = :auto # auto-detect from the ActiveRecord connection
+  c.allowed_import_prefixes = ["datasets"] # required for source + allow_imports: true
 end
 ```
 
@@ -207,6 +208,7 @@ Rake tasks are file-based; `source:` is intended for runtime inputs and is not s
 - `trusted: false` by default
 - query-only: `format` must be `:query` unless `trusted: true`
 - imports disabled: `allow_imports` defaults to `false` unless `trusted: true` (or `allow_imports: true` explicitly)
+- query-only validation raises `LogicaRb::SqlSafety::Violation`
 
 Operational safety suggestions for runtime-provided source:
 

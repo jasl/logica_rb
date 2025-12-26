@@ -6,7 +6,8 @@ module LogicaRb
       :import_root,
       :cache,
       :cache_mode,
-      :default_engine
+      :default_engine,
+      :allowed_import_prefixes
     )
   end
 end

@@ -22,7 +22,10 @@ module LogicaRb
       def sql(format: :query)
         format = (format || :query).to_sym
         enforce_source_policy!(format: format)
-        compile.sql(format)
+        compilation = compile
+        sql_text = compilation.sql(format)
+        validate_query_only_sql!(sql_text, engine: compilation.engine) if format == :query
+        sql_text
       end
 
       def plan_json(pretty: true)
@@ -32,7 +35,7 @@ module LogicaRb
 
       def result
         sql_text, engine = compiled_query_sql_and_engine
-        enforce_query_only_sql!(sql_text, engine: engine)
+        validate_query_only_sql!(sql_text, engine: engine)
         @executor.select_all(sql_text)
       end
 
@@ -42,7 +45,7 @@ module LogicaRb
 
       def relation(model:, as: nil)
         sql_text, engine = compiled_query_sql_and_engine
-        enforce_query_only_sql!(sql_text, engine: engine)
+        validate_query_only_sql!(sql_text, engine: engine)
 
         alias_name = (as || @definition.as || default_alias_name).to_s
 
@@ -88,11 +91,23 @@ module LogicaRb
         [compilation.sql(:query), compilation.engine]
       end
 
-      def enforce_query_only_sql!(sql, engine:)
+      def validate_query_only_sql!(sql, engine:)
         return nil unless @definition.source
         return nil if @definition.trusted
 
+        return nil if already_validated_query_sql?(sql, engine: engine)
+
         LogicaRb::SqlSafety::QueryOnlyValidator.validate!(sql, engine: engine)
+        @validated_query_sql = sql
+        @validated_query_engine = engine.to_s
+      end
+
+      def already_validated_query_sql?(sql, engine:)
+        return false if @validated_query_sql.nil?
+        return false if @validated_query_sql != sql
+
+        # engine can be nil; treat it as "" for comparisons.
+        @validated_query_engine.to_s == engine.to_s
       end
     end
   end

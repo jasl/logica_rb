@@ -1243,15 +1243,39 @@ module LogicaRb
         end
         import_path = import_path_synonym[0]
         synonym = import_path_synonym.length == 2 ? import_path_synonym[1] : nil
-        import_parts = import_path.split(".")
-        unless import_parts[-1][0].match?(/[A-Z]/)
-          raise "One import per predicate please. Violator: #{import_str}"
+        import_parts = split(import_path, ".")
+
+        import_parts.each do |segment|
+          next if segment.match?(/\A[a-zA-Z0-9_]+\z/)
+
+          raise ParsingException.new(
+            "Invalid import path segment: #{segment.inspect}. Import segments must match /\\A[a-zA-Z0-9_]+\\z/.",
+            segment
+          )
         end
+
+        unless import_parts[-1][0].match?(/[A-Z]/)
+          raise ParsingException.new(
+            "One import per predicate please. Import must end with a PredicateName starting with A-Z. Violator: #{import_str}",
+            import_str
+          )
+        end
+
         [import_parts[0...-1].join("."), import_parts[-1], synonym]
       end
 
       def parse_import(file_import_str, parsed_imports, import_chain, import_root)
         file_import_parts = file_import_str.split(".")
+
+        file_import_parts.each do |segment|
+          next if segment.match?(/\A[a-zA-Z0-9_]+\z/)
+
+          raise ParsingException.new(
+            "Invalid import path segment: #{segment.inspect}. Import segments must match /\\A[a-zA-Z0-9_]+\\z/.",
+            HeritageAwareString.new(file_import_str)
+          )
+        end
+
         if parsed_imports.key?(file_import_str)
           if parsed_imports[file_import_str].nil?
             raise ParsingException.new(

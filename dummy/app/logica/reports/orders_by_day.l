@@ -1,7 +1,5 @@
 @Engine("sqlite");
 
-import datasets;
-
 OrdersByDay(day:, orders_count:, total_cents:) :-
   `((select
       date(ordered_at) as day,

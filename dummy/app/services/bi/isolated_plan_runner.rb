@@ -6,7 +6,9 @@ require "set"
 
 module Bi
   class IsolatedPlanRunner
-    def initialize(plan_hash: nil, plan_json: nil, connection: ActiveRecord::Base.connection)
+    MAX_PER_PAGE = 200
+
+    def initialize(plan_hash: nil, plan_json: nil, connection: ActiveRecord::Base.connection, page: nil, per_page: nil)
       @plan_hash =
         if plan_hash
           plan_hash
@@ -17,6 +19,11 @@ module Bi
       raise ArgumentError, "plan_hash or plan_json must be provided" unless @plan_hash
 
       @connection = connection
+      @page = (page || 1).to_i
+      @page = 1 if @page < 1
+      @per_page = per_page.nil? ? nil : per_page.to_i
+      @per_page = 1 if @per_page && @per_page < 1
+      @per_page = [@per_page, MAX_PER_PAGE].min if @per_page
     end
 
     def run!
@@ -35,12 +42,13 @@ module Bi
     def run_postgres_isolated!
       schema = "logica_tmp_#{SecureRandom.hex(8)}"
       quoted_schema = @connection.quote_table_name(schema)
+      quoted_public = @connection.quote_table_name("public")
 
       @connection.execute("CREATE SCHEMA #{quoted_schema}")
 
       outputs = nil
       @connection.transaction(requires_new: true) do
-        @connection.execute("SET LOCAL search_path TO #{quoted_schema}")
+        @connection.execute("SET LOCAL search_path TO #{quoted_schema}, #{quoted_public}")
         adapter = ActiveRecordAdapter.new(@connection)
         PlanExecutor.new(@plan_hash).execute!(adapter)
         outputs = fetch_outputs(adapter)
@@ -82,12 +90,22 @@ module Bi
         query = sql.strip
 
         if query.match?(/\A(?:WITH|SELECT)\b/i)
-          result[predicate] = adapter.select_all(query)
+          result[predicate] = adapter.select_all(apply_pagination(query))
         else
           adapter.exec_script(query)
           result[predicate] = nil
         end
       end
+    end
+
+    def apply_pagination(query)
+      return query unless @per_page
+
+      offset = (@page - 1) * @per_page
+      <<~SQL.squish
+        SELECT * FROM (#{query}) AS logica_rows
+        LIMIT #{Integer(@per_page)} OFFSET #{Integer(offset)}
+      SQL
     end
 
     class ActiveRecordAdapter
@@ -101,7 +119,7 @@ module Bi
 
       def select_all(sql)
         @connection.select_all(sql)
-      end
+  end
     end
 
     class Sqlite3Adapter

@@ -1,13 +1,46 @@
-<% content_for :title, @report&.title || "Report" %>
+<% content_for :title, @report&.name || "Report" %>
 
 <div class="container">
   <header class="header">
-    <h1><%= @report&.title || "Report" %></h1>
+    <h1><%= @report&.name || "Report" %></h1>
     <nav class="nav">
       <%= link_to "All reports", reports_path, class: "nav-link" %>
+      <%= link_to "Edit", edit_report_path(@report), class: "nav-link" %>
       <%= link_to "Custom query", new_custom_query_path, class: "nav-link" %>
     </nav>
   </header>
+
+  <p class="muted">
+    Mode: <code><%= @report.mode %></code> · Predicate: <code><%= @report.predicate %></code> · Engine: <code><%= @report.engine %></code>
+  </p>
+
+  <%= form_with url: run_report_path(@report), method: :post, local: true do %>
+    <% if @can_run_isolated_plan %>
+      <div class="field">
+        <%= label_tag :run_mode, "Run mode" %>
+        <%= select_tag :run_mode, options_for_select([["Query", "query"], ["Isolated plan (Postgres)", "isolated_plan"]], @run_mode), class: "text-input" %>
+      </div>
+    <% else %>
+      <%= hidden_field_tag :run_mode, "query" %>
+    <% end %>
+
+    <div class="field">
+      <%= label_tag :flags_json, "Flags (JSON)" %>
+      <%= text_area_tag :flags_json, @flags_json, class: "code-input", rows: 6 %>
+    </div>
+
+    <div class="field">
+      <%= label_tag :page, "Page" %>
+      <%= number_field_tag :page, @page, min: 1, class: "text-input" %>
+    </div>
+
+    <div class="field">
+      <%= label_tag :per_page, "Per page (max #{Bi::ReportRunner::MAX_PER_PAGE})" %>
+      <%= number_field_tag :per_page, @per_page, min: 1, max: Bi::ReportRunner::MAX_PER_PAGE, class: "text-input" %>
+    </div>
+
+    <%= submit_tag "Run report", class: "button" %>
+  <% end %>
 
   <% if @error %>
     <div class="alert">
@@ -16,13 +49,53 @@
     </div>
   <% end %>
 
-  <% if @sql %>
-    <h2>Compiled SQL</h2>
-    <pre class="code"><code><%= @sql %></code></pre>
+  <% if @sql || @executed_sql %>
+    <h2>SQL</h2>
+    <% if @sql %>
+      <p class="muted">Compiled:</p>
+      <pre class="code"><code><%= @sql %></code></pre>
+    <% end %>
+    <% if @executed_sql %>
+      <p class="muted">Executed (pagination/max_rows applied):</p>
+      <pre class="code"><code><%= @executed_sql %></code></pre>
+    <% end %>
+  <% end %>
+
+  <% if @plan_json %>
+    <h2>Plan JSON</h2>
+    <pre class="code"><code><%= @plan_json %></code></pre>
   <% end %>
 
   <% if @result %>
     <h2>Result</h2>
     <%= render "shared/result_table", result: @result %>
+  <% end %>
+
+  <% if @runs&.any? %>
+    <h2>Run history</h2>
+    <div class="table-wrap">
+      <table class="results">
+        <thead>
+          <tr>
+            <th>At</th>
+            <th>Status</th>
+            <th>Duration</th>
+            <th>Rows</th>
+            <th>Error</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @runs.each do |run| %>
+            <tr>
+              <td><%= run.created_at %></td>
+              <td><%= run.status %></td>
+              <td><%= run.duration_ms %>ms</td>
+              <td><%= run.row_count %></td>
+              <td><%= run.error_class %> <%= run.error_message %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
   <% end %>
 </div>

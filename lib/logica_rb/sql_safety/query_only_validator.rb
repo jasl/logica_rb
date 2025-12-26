@@ -8,7 +8,7 @@ module LogicaRb
       BASE_FORBIDDEN_KEYWORDS = Set.new(
         %w[
           INSERT UPDATE DELETE MERGE CREATE DROP ALTER TRUNCATE GRANT REVOKE
-          BEGIN COMMIT ROLLBACK SET
+          BEGIN COMMIT ROLLBACK SET RESET
           VACUUM ANALYZE REINDEX
         ]
       ).freeze
@@ -18,44 +18,62 @@ module LogicaRb
 
       WORD_TOKEN = /[A-Za-z_][A-Za-z0-9_]*/.freeze
 
-      def self.validate!(sql, engine:, allow_explain: false)
+      def self.validate!(sql, engine: nil, allow_explain: false)
         sql = sql.to_s
         engine = engine.to_s
         engine = nil if engine.empty?
 
-        unless %w[sqlite psql].include?(engine)
-          raise LogicaRb::UnsupportedEngineError, engine
-        end
-
         cleaned = strip_comments_and_literals(sql)
-        if cleaned.include?(";")
-          raise LogicaRb::QueryOnlyViolationError, "Multiple SQL statements are not allowed"
-        end
+        validate_semicolons!(cleaned)
 
         tokens = cleaned.scan(WORD_TOKEN).map!(&:upcase)
         if tokens.empty?
-          raise LogicaRb::QueryOnlyViolationError, "SQL must be a non-empty query"
+          raise LogicaRb::SqlSafety::Violation.new(:empty_sql, "SQL must be a non-empty query")
         end
 
         first = tokens.first
-        allowed_first = %w[SELECT WITH]
+        allowed_first = %w[SELECT WITH VALUES]
         allowed_first << "EXPLAIN" if allow_explain
 
         unless allowed_first.include?(first)
-          raise LogicaRb::QueryOnlyViolationError, "Only SELECT/WITH queries are allowed"
+          raise LogicaRb::SqlSafety::Violation.new(:not_a_query, "Only SELECT/WITH/VALUES queries are allowed")
         end
 
-        forbidden = BASE_FORBIDDEN_KEYWORDS | (engine == "sqlite" ? SQLITE_FORBIDDEN_KEYWORDS : PSQL_FORBIDDEN_KEYWORDS)
+        forbidden = forbidden_keywords_for_engine(engine)
         hit = tokens.find { |t| forbidden.include?(t) }
         if hit
-          raise LogicaRb::QueryOnlyViolationError, "Disallowed SQL keyword: #{hit}"
+          raise LogicaRb::SqlSafety::Violation.new(:forbidden_keyword, "Disallowed SQL keyword: #{hit}")
         end
 
-        if engine == "psql" && tokens.include?("INTO")
-          raise LogicaRb::QueryOnlyViolationError, "PostgreSQL SELECT INTO is not allowed"
+        if (engine.nil? || engine == "psql") && tokens.include?("INTO")
+          raise LogicaRb::SqlSafety::Violation.new(:select_into, "PostgreSQL SELECT INTO is not allowed")
         end
 
         nil
+      end
+
+      def self.validate_semicolons!(cleaned)
+        trimmed = cleaned.rstrip
+        trimmed = trimmed.chomp(";").rstrip if trimmed.end_with?(";")
+        return nil unless trimmed.include?(";")
+
+        raise LogicaRb::SqlSafety::Violation.new(:multiple_statements, "Multiple SQL statements are not allowed")
+      end
+
+      def self.forbidden_keywords_for_engine(engine)
+        keywords = BASE_FORBIDDEN_KEYWORDS.dup
+
+        case engine
+        when "sqlite"
+          keywords.merge(SQLITE_FORBIDDEN_KEYWORDS)
+        when "psql"
+          keywords.merge(PSQL_FORBIDDEN_KEYWORDS)
+        else
+          keywords.merge(SQLITE_FORBIDDEN_KEYWORDS)
+          keywords.merge(PSQL_FORBIDDEN_KEYWORDS)
+        end
+
+        keywords
       end
 
       def self.strip_comments_and_literals(sql)
@@ -146,6 +164,58 @@ module LogicaRb
 
               if c == 34
                 if cn == 34 # "\"\""
+                  s.setbyte(i, 32)
+                  s.setbyte(i + 1, 32)
+                  i += 2
+                  next
+                end
+
+                s.setbyte(i, 32)
+                i += 1
+                break
+              end
+
+              s.setbyte(i, 32) unless c == 10
+              i += 1
+            end
+            next
+          end
+
+          if b == 96 # "`"
+            s.setbyte(i, 32)
+            i += 1
+            while i < s.bytesize
+              c = s.getbyte(i)
+              cn = s.getbyte(i + 1)
+
+              if c == 96
+                if cn == 96 # "``"
+                  s.setbyte(i, 32)
+                  s.setbyte(i + 1, 32)
+                  i += 2
+                  next
+                end
+
+                s.setbyte(i, 32)
+                i += 1
+                break
+              end
+
+              s.setbyte(i, 32) unless c == 10
+              i += 1
+            end
+            next
+          end
+
+          if b == 91 # "["
+            s.setbyte(i, 32)
+            i += 1
+            while i < s.bytesize
+              c = s.getbyte(i)
+              cn = s.getbyte(i + 1)
+
+              if c == 93 # "]"
+                if cn == 93 # "]]"
                   s.setbyte(i, 32)
                   s.setbyte(i + 1, 32)
                   i += 2

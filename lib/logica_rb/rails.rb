@@ -28,7 +28,8 @@ module LogicaRb
       import_root: nil,
       cache: true,
       cache_mode: :mtime,
-      default_engine: nil
+      default_engine: nil,
+      allowed_import_prefixes: nil
     )
 
     @configuration = DEFAULT_CONFIGURATION
@@ -42,6 +43,7 @@ module LogicaRb
       options.cache = cfg.cache
       options.cache_mode = cfg.cache_mode
       options.default_engine = cfg.default_engine
+      options.allowed_import_prefixes = cfg.allowed_import_prefixes
 
       yield options if block_given?
 
@@ -49,7 +51,8 @@ module LogicaRb
         import_root: options.import_root,
         cache: options.cache.nil? ? cfg.cache : !!options.cache,
         cache_mode: (options.cache_mode || cfg.cache_mode || :mtime).to_sym,
-        default_engine: options.default_engine&.to_s
+        default_engine: options.default_engine&.to_s,
+        allowed_import_prefixes: normalize_allowed_import_prefixes(options.allowed_import_prefixes)
       )
 
       clear_cache!
@@ -73,13 +76,21 @@ module LogicaRb
       cache = app_cfg.respond_to?(:cache) ? app_cfg.cache : nil
       cache_mode = app_cfg.respond_to?(:cache_mode) ? app_cfg.cache_mode : nil
       default_engine = app_cfg.respond_to?(:default_engine) ? app_cfg.default_engine : nil
+      allowed_import_prefixes = app_cfg.respond_to?(:allowed_import_prefixes) ? app_cfg.allowed_import_prefixes : nil
 
       Configuration.new(
         import_root: import_root.nil? ? base.import_root : import_root,
         cache: cache.nil? ? base.cache : !!cache,
         cache_mode: cache_mode.nil? ? base.cache_mode : cache_mode.to_sym,
-        default_engine: default_engine.nil? ? base.default_engine : default_engine&.to_s
+        default_engine: default_engine.nil? ? base.default_engine : default_engine&.to_s,
+        allowed_import_prefixes: allowed_import_prefixes.nil? ? base.allowed_import_prefixes : normalize_allowed_import_prefixes(allowed_import_prefixes)
       )
+    end
+
+    def self.normalize_allowed_import_prefixes(value)
+      return nil if value.nil?
+
+      Array(value).compact.map(&:to_s).map(&:strip).reject(&:empty?)
     end
 
     def self.cache

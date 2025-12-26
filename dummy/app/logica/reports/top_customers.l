@@ -1,7 +1,5 @@
 @Engine("sqlite");
 
-import datasets;
-
 TopCustomers(customer_name:, orders_count:, total_cents:) :-
   `((select
       c.name as customer_name,
