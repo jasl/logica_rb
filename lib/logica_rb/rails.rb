@@ -16,6 +16,7 @@ end
 require_relative "rails/configuration"
 require_relative "rails/engine_detector"
 require_relative "rails/compiler_cache"
+require_relative "rails/catalog"
 require_relative "rails/executor"
 require_relative "rails/query_definition"
 require_relative "rails/query"
@@ -100,6 +101,50 @@ module LogicaRb
       end
 
       @installed = true
+    end
+
+    def self.query(
+      file: nil,
+      source: nil,
+      predicate:,
+      connection: nil,
+      engine: :auto,
+      flags: {},
+      format: :query,
+      import_root: nil,
+      trusted: nil,
+      allow_imports: nil,
+      as: nil
+    )
+      connection ||= defined?(::ActiveRecord::Base) ? ::ActiveRecord::Base.connection : nil
+      unless connection
+        raise LogicaRb::MissingOptionalDependencyError.new(
+          "activerecord",
+          'ActiveRecord is required for LogicaRb::Rails.query. Add `gem "activerecord"` (or install Rails).'
+        )
+      end
+
+      definition = QueryDefinition.new(
+        name: nil,
+        file: file,
+        source: source,
+        predicate: predicate,
+        engine: engine,
+        format: format,
+        flags: flags,
+        as: as,
+        import_root: import_root,
+        trusted: trusted,
+        allow_imports: allow_imports
+      )
+
+      cfg = configuration
+      cache = cfg.cache ? LogicaRb::Rails.cache : nil
+      Query.new(definition, connection: connection, cache: cache)
+    end
+
+    def self.cte(name, file: nil, source: nil, predicate:, model: nil, **opts)
+      query(file: file, source: source, predicate: predicate, **opts).cte(name, model: model)
     end
   end
 end

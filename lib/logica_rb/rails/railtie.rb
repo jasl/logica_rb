@@ -9,7 +9,7 @@ module LogicaRb
         app.config.logica_rb.import_root ||= ::Rails.root.join("app/logica")
         app.config.logica_rb.cache = true if app.config.logica_rb.cache.nil?
         app.config.logica_rb.cache_mode ||= :mtime
-        app.config.logica_rb.default_engine ||= nil
+        app.config.logica_rb.default_engine ||= :auto
       end
 
       initializer "logica_rb.active_record" do
@@ -20,6 +20,10 @@ module LogicaRb
         ActiveSupport::Reloader.to_prepare do
           LogicaRb::Rails.clear_cache!
         end
+      end
+
+      rake_tasks do
+        require_relative "rake_tasks"
       end
     end
   end

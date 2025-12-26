@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "digest"
 require "pathname"
 
 module LogicaRb
@@ -32,56 +33,93 @@ module LogicaRb
 
       def cache_key_data(definition, connection:)
         engine = resolve_engine(definition.engine, connection: connection)
-        import_root = resolve_import_root(definition.import_root)
+        import_root = resolve_import_root(definition.import_root || LogicaRb::Rails.configuration.import_root)
         cache_mode = (LogicaRb::Rails.configuration.cache_mode || :mtime).to_sym
-
-        file_path = resolve_logica_file_path(definition.file, import_root: import_root)
-        realpath = File.realpath(file_path)
 
         flags = definition.flags || {}
         normalized_flags = flags.transform_keys(&:to_s)
 
-        deps = dependencies_for(realpath, import_root: import_root, cache_mode: cache_mode)
+        allow_imports = !!definition.allow_imports
 
-        {
+        base = {
           cache_mode: cache_mode.to_s,
           engine: engine,
-          file: realpath,
           predicate: definition.predicate.to_s,
           format: (definition.format || :query).to_s,
           flags: normalized_flags.sort.to_h,
           import_root: import_root_key(import_root),
-          dependencies_mtime: deps[:mtimes],
+          allow_imports: allow_imports,
         }
+
+        if definition.file
+          file_path = resolve_logica_file_path(definition.file, import_root: import_root)
+          realpath = File.realpath(file_path)
+
+          deps_mtime = dependencies_mtime_for_file(realpath, import_root: import_root, cache_mode: cache_mode, allow_imports: allow_imports)
+
+          base.merge(
+            file: realpath,
+            dependencies_mtime: deps_mtime
+          )
+        else
+          source_text = definition.source.to_s
+          source_sha256 = Digest::SHA256.hexdigest(source_text)
+          deps_mtime = dependencies_mtime_for_source(source_text, import_root: import_root, cache_mode: cache_mode, allow_imports: allow_imports)
+
+          base.merge(
+            source_sha256: source_sha256,
+            dependencies_mtime: deps_mtime
+          )
+        end
       end
 
       def compile(definition, connection:, key_data:)
         engine = key_data.fetch(:engine)
-        import_root = resolve_import_root(definition.import_root)
+        import_root = resolve_import_root(definition.import_root || LogicaRb::Rails.configuration.import_root)
         predicate = definition.predicate.to_s
         flags = (definition.flags || {}).transform_keys(&:to_s)
 
-        file_path = resolve_logica_file_path(definition.file, import_root: import_root)
-        file_path = File.realpath(file_path)
+        allow_imports = !!definition.allow_imports
 
-        compilation = LogicaRb::Transpiler.compile_file(
-          file_path,
-          predicates: predicate,
-          engine: engine,
-          user_flags: flags,
-          import_root: import_root_for_parser(import_root)
-        )
+        compilation =
+          if definition.file
+            file_path = resolve_logica_file_path(definition.file, import_root: import_root)
+            file_path = File.realpath(file_path)
+            source_text = File.read(file_path)
+            ensure_imports_allowed!(allow_imports: allow_imports, source: source_text)
 
-        compilation.metadata["dependencies"] = key_data.dig(:dependencies_mtime)&.keys&.sort
+            LogicaRb::Transpiler.compile_file(
+              file_path,
+              predicates: predicate,
+              engine: engine,
+              user_flags: flags,
+              import_root: import_root_for_parser(import_root)
+            )
+          else
+            source_text = definition.source.to_s
+            ensure_imports_allowed!(allow_imports: allow_imports, source: source_text)
+
+            LogicaRb::Transpiler.compile_string(
+              source_text,
+              predicates: predicate,
+              engine: engine,
+              user_flags: flags,
+              import_root: import_root_for_parser(import_root)
+            )
+          end
+
+        compilation.metadata["dependencies"] = (key_data[:dependencies_mtime] || {}).keys.sort
         compilation
       end
 
       def resolve_engine(engine, connection:)
         engine = engine.to_s if engine.is_a?(Symbol)
-        return engine.to_s if engine && !engine.empty? && engine != "auto"
+        engine = nil if engine.is_a?(String) && engine.empty?
 
-        cfg = LogicaRb::Rails.configuration
-        cfg.default_engine&.to_s || EngineDetector.detect(connection)
+        return nil if engine.nil?
+        return EngineDetector.detect(connection) if engine == "auto"
+
+        engine.to_s
       end
 
       def resolve_import_root(import_root)
@@ -123,8 +161,10 @@ module LogicaRb
         File.expand_path(File.join(roots.first.to_s, file))
       end
 
-      def dependencies_for(file_path, import_root:, cache_mode:)
-        return { files: [file_path], mtimes: { file_path => File.mtime(file_path).to_i } } unless cache_mode == :mtime
+      def dependencies_mtime_for_file(file_path, import_root:, cache_mode:, allow_imports:)
+        mtimes = { file_path => File.mtime(file_path).to_i }
+        return mtimes.sort.to_h unless allow_imports
+        return mtimes.sort.to_h unless cache_mode == :mtime
 
         source = File.read(file_path)
         parsed_imports = {}
@@ -134,9 +174,23 @@ module LogicaRb
           resolve_imported_file_path(file_import_str, import_root: import_root_for_parser(import_root))
         end
 
-        all = ([file_path] + dep_paths).uniq
-        mtimes = all.each_with_object({}) { |p, h| h[p] = File.mtime(p).to_i }
-        { files: all, mtimes: mtimes.sort.to_h }
+        all = (dep_paths).uniq
+        all.each { |p| mtimes[p] = File.mtime(p).to_i }
+        mtimes.sort.to_h
+      end
+
+      def dependencies_mtime_for_source(source, import_root:, cache_mode:, allow_imports:)
+        return {} unless allow_imports
+        return {} unless cache_mode == :mtime
+
+        parsed_imports = {}
+        LogicaRb::Parser.parse_file(source.to_s, import_root: import_root_for_parser(import_root), parsed_imports: parsed_imports)
+
+        dep_paths = parsed_imports.keys.map do |file_import_str|
+          resolve_imported_file_path(file_import_str, import_root: import_root_for_parser(import_root))
+        end
+
+        dep_paths.uniq.each_with_object({}) { |p, h| h[p] = File.mtime(p).to_i }.sort.to_h
       end
 
       def resolve_imported_file_path(file_import_str, import_root:)
@@ -149,6 +203,20 @@ module LogicaRb
         end
 
         File.join(import_root.to_s, File.join(parts) + ".l")
+      end
+
+      def ensure_imports_allowed!(allow_imports:, source:)
+        return nil if allow_imports
+        return nil unless imports_present?(source)
+
+        raise ArgumentError, "Imports are disabled (pass trusted: true or allow_imports: true to enable)"
+      end
+
+      def imports_present?(source)
+        cleaned = LogicaRb::Parser.remove_comments(source.to_s)
+        LogicaRb::Parser.split(cleaned, ";").any? { |stmt| stmt.start_with?("import ") }
+      rescue LogicaRb::Parser::ParsingException
+        false
       end
     end
   end

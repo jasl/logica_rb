@@ -99,7 +99,7 @@ LogicaRb::Rails.configure do |c|
   c.import_root = Rails.root.join("app/logica")
   c.cache = true
   c.cache_mode = :mtime
-  c.default_engine = nil # auto-detect from the connection when nil
+  c.default_engine = :auto # auto-detect from the ActiveRecord connection
 end
 ```
 
@@ -108,7 +108,17 @@ Configuration API:
 - `LogicaRb::Rails.configuration`
 - `LogicaRb::Rails.cache` / `LogicaRb::Rails.clear_cache!`
 
-Caching is enabled by default. In Rails development, the Railtie clears the compilation cache on each reload via `ActiveSupport::Reloader.to_prepare`.
+Caching is enabled by default. In Rails development, the Railtie clears the compilation cache on boot and each reload via `ActiveSupport::Reloader.to_prepare`.
+
+### Install generator
+
+```bash
+rails g logica_rb:install
+```
+
+Creates:
+- `app/logica/hello.l`
+- `config/initializers/logica_rb.rb`
 
 ### Model DSL
 
@@ -147,9 +157,62 @@ User.logica_records(:active_users) # => [#<User ...>, ...]
 
 Advanced: `User.logica(:active_users)` returns a `LogicaRb::Rails::Query` with `sql`, `plan_json`, `result`, `relation`, `records`, and `cte`.
 
+### External DSL-first API (file / source)
+
+Module-level entrypoints (no model DSL required):
+
+```ruby
+# file (recommended default)
+q = LogicaRb::Rails.query(file: "hello.l", predicate: "Hello")
+q.result # => ActiveRecord::Result
+
+# source (runtime-provided, BI/backoffice custom reports, etc.)
+src = <<~LOGICA
+  @Engine("sqlite");
+  Base(x:) :- x = 11;
+  Report(x:) :- Base(x:), x > 10;
+LOGICA
+q = LogicaRb::Rails.query(source: src, predicate: "Report", trusted: false)
+q.result # => ActiveRecord::Result
+```
+
+`file:` and `source:` are mutually exclusive (XOR).
+
+### CTE helpers (ActiveRecord `with`)
+
+`LogicaRb::Rails::Query#cte` (and `LogicaRb::Rails.cte`) returns a hash compatible with `ActiveRecord::Relation#with`.
+
+```ruby
+cte = LogicaRb::Rails.cte(:adult_users, file: "users.l", predicate: "AdultUsers", model: User)
+rel = User.with(cte).joins("JOIN adult_users ON adult_users.id = users.id")
+```
+
+### Rake tasks (file workflow)
+
+- `rake logica_rb:validate` scans `app/logica/**/*.l` and compiles all defined predicates.
+- `rake logica_rb:print[file,predicate,format]` prints compiled SQL (format: `query|script|plan`).
+- `rake logica_rb:signatures[file]` prints `show_signatures` output.
+
+Rake tasks are file-based; `source:` is intended for runtime inputs and is not scanned.
+
 ### Safety notes
 
 - `LogicaRb::Rails::Query#relation` uses `Arel.sql` to wrap the compiled subquery. Treat compilation output as trusted code, and do **not** pass untrusted user input into Logica flags without validation.
+- `ActiveRecord::Relation#with` also accepts `Arel.sql(...)` for SQL literals, but this must only wrap known-safe SQL. Do not interpolate request params/model attributes/etc. into SQL strings.
+
+### BI/后台自定义查询（source 模式）
+
+`source:` is a first-class API, but defaults to a safer mode:
+
+- `trusted: false` by default
+- query-only: `format` must be `:query` unless `trusted: true`
+- imports disabled: `allow_imports` defaults to `false` unless `trusted: true` (or `allow_imports: true` explicitly)
+
+Operational safety suggestions for runtime-provided source:
+
+- Use a read-only DB role and restrict accessible schemas/tables.
+- Set timeouts / statement limits (e.g., PostgreSQL `statement_timeout`).
+- Do not splice request params directly into Logica source or `flags` without validation.
 
 Plan docs:
 - `docs/PLAN_SCHEMA.md`

@@ -15,28 +15,18 @@ module LogicaRb
       attr_reader :definition
 
       def compile
-        if @cache
-          return @cache.fetch(@definition, connection: @connection)
-        end
-
-        engine = resolve_engine
-        import_root = resolve_import_root
-        file_path = resolve_logica_file_path(@definition.file, import_root: import_root)
-
-        LogicaRb::Transpiler.compile_file(
-          File.realpath(file_path),
-          predicates: @definition.predicate.to_s,
-          engine: engine,
-          user_flags: (@definition.flags || {}).transform_keys(&:to_s),
-          import_root: import_root
-        )
+        cache = @cache || CompilerCache.new
+        cache.fetch(@definition, connection: @connection)
       end
 
       def sql(format: :query)
+        format = (format || :query).to_sym
+        enforce_source_policy!(format: format)
         compile.sql(format)
       end
 
       def plan_json(pretty: true)
+        enforce_source_policy!(format: :plan)
         compile.plan_json(pretty: pretty)
       end
 
@@ -58,8 +48,19 @@ module LogicaRb
         rel.select("#{safe_alias}.*")
       end
 
-      def cte(name:)
-        [name, Arel.sql(sql(format: :query))]
+      def cte(name = nil, model: nil, **kwargs)
+        name = kwargs.fetch(:name, name)
+        raise ArgumentError, "cte name must be provided" if name.nil? || name.to_s.empty?
+
+        cte_name = name.to_sym
+        cte_value =
+          if model
+            relation(model: model, as: cte_name)
+          else
+            Arel.sql(sql(format: :query))
+          end
+
+        { cte_name => cte_value }
       end
 
       private
@@ -68,34 +69,12 @@ module LogicaRb
         "logica_#{@definition.predicate.to_s.downcase}"
       end
 
-      def resolve_engine
-        engine = @definition.engine
-        engine = engine.to_s if engine.is_a?(Symbol)
-        return engine.to_s if engine && !engine.empty? && engine != "auto"
+      def enforce_source_policy!(format:)
+        return nil unless @definition.source
+        return nil if @definition.trusted
+        return nil if format.to_sym == :query
 
-        cfg = LogicaRb::Rails.configuration
-        cfg.default_engine&.to_s || EngineDetector.detect(@connection)
-      end
-
-      def resolve_import_root
-        import_root = @definition.import_root || LogicaRb::Rails.configuration.import_root
-        import_root = import_root.to_path if import_root.respond_to?(:to_path)
-        import_root
-      end
-
-      def resolve_logica_file_path(file, import_root:)
-        file = file.to_s
-        return File.expand_path(file) if Pathname.new(file).absolute?
-        return File.expand_path(file) if import_root.nil?
-
-        roots = import_root.is_a?(Array) ? import_root : [import_root]
-        roots.each do |root|
-          next if root.nil? || root.to_s.empty?
-          candidate = File.join(root.to_s, file)
-          return File.expand_path(candidate) if File.exist?(candidate)
-        end
-
-        File.expand_path(File.join(roots.first.to_s, file))
+        raise ArgumentError, "source queries require format: :query unless trusted: true"
       end
     end
   end
