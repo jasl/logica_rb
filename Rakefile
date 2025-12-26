@@ -9,7 +9,7 @@ require "bundler/gem_tasks"
 require "minitest/test_task"
 
 Minitest::TestTask.create do |t|
-  t.test_globs = ["test/*_test.rb", "test/db_smoke/**/*_test.rb"]
+  t.test_globs = ["test/*_test.rb", "test/sql_safety/**/*_test.rb", "test/db_smoke/**/*_test.rb"]
 end
 
 require "rubocop/rake_task"
@@ -21,8 +21,15 @@ task default: %i[test rubocop]
 namespace :test do
   desc "Run Rails integration tests (SQLite)"
   task :rails_sqlite do
-    sh "bundle exec ruby -Itest test/rails/smoke_test.rb test/rails/query_relation_test.rb " \
-       "test/rails/query_result_test.rb test/rails/cache_reload_test.rb"
+    files = %w[
+      test/rails/smoke_test.rb
+      test/rails/query_relation_test.rb
+      test/rails/query_result_test.rb
+      test/rails/query_source_test.rb
+      test/rails/cache_reload_test.rb
+    ]
+
+    sh "bundle exec ruby -Itest -e 'ARGV.each { |f| load f }' -- #{files.join(" ")}"
   end
 
   desc "Run Rails integration tests (Postgres, requires DATABASE_URL)"

@@ -73,7 +73,7 @@ class RailsCacheReloadTest < Minitest::Test
           import dep.DepValue;
 
           Test(v:) :-
-            DepValue(v0:),
+            DepValue(v: v0),
             v = v0 + 10;
         LOGICA
       )

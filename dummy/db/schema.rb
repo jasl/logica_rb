@@ -10,5 +10,24 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 0) do
+ActiveRecord::Schema[8.1].define(version: 20251226000001) do
+  create_table "customers", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "region", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
+  create_table "orders", force: :cascade do |t|
+    t.integer "customer_id", null: false
+    t.integer "amount_cents", null: false
+    t.string "status", default: "placed", null: false
+    t.datetime "ordered_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["customer_id"], name: "index_orders_on_customer_id"
+    t.index ["ordered_at"], name: "index_orders_on_ordered_at"
+  end
+
+  add_foreign_key "orders", "customers"
 end

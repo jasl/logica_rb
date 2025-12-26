@@ -1,0 +1,28 @@
+<% content_for :title, @report&.title || "Report" %>
+
+<div class="container">
+  <header class="header">
+    <h1><%= @report&.title || "Report" %></h1>
+    <nav class="nav">
+      <%= link_to "All reports", reports_path, class: "nav-link" %>
+      <%= link_to "Custom query", new_custom_query_path, class: "nav-link" %>
+    </nav>
+  </header>
+
+  <% if @error %>
+    <div class="alert">
+      <strong><%= @error.class.name %></strong>
+      <div><%= @error.message %></div>
+    </div>
+  <% end %>
+
+  <% if @sql %>
+    <h2>Compiled SQL</h2>
+    <pre class="code"><code><%= @sql %></code></pre>
+  <% end %>
+
+  <% if @result %>
+    <h2>Result</h2>
+    <%= render "shared/result_table", result: @result %>
+  <% end %>
+</div>

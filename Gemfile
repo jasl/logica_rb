@@ -16,6 +16,6 @@ gem "rubocop-rails-omakase", require: false
 gem "rails", "~> 8.1"
 gem "propshaft"
 gem "puma"
-gem "sqlite3"
 
-gem "pg", require: false
+gem "sqlite3"
+gem "pg"

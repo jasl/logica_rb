@@ -48,20 +48,34 @@ class RailsIntegrationSmokeTest < Minitest::Test
 
     require "logica_rb/rails"
 
-    sqlite3_mod = Object.const_defined?(:SQLite3) ? Object.const_get(:SQLite3) : Object.const_set(:SQLite3, Module.new)
-    unless sqlite3_mod.const_defined?(:Database)
-      sqlite3_mod.const_set(
-        :Database,
-        Class.new do
+    sqlite_raw =
+      if defined?(::SQLite3::Database)
+        Class.new(::SQLite3::Database) do
           attr_reader :batches
 
           def execute_batch(sql)
             @batches ||= []
             @batches << sql
           end
+        end.new(":memory:")
+      else
+        sqlite3_mod = Object.const_defined?(:SQLite3) ? Object.const_get(:SQLite3) : Object.const_set(:SQLite3, Module.new)
+        unless sqlite3_mod.const_defined?(:Database)
+          sqlite3_mod.const_set(
+            :Database,
+            Class.new do
+              attr_reader :batches
+
+              def execute_batch(sql)
+                @batches ||= []
+                @batches << sql
+              end
+            end
+          )
         end
-      )
-    end
+
+        ::SQLite3::Database.new
+      end
 
     pg_mod = Object.const_defined?(:PG) ? Object.const_get(:PG) : Object.const_set(:PG, Module.new)
     unless pg_mod.const_defined?(:Connection)
@@ -78,7 +92,6 @@ class RailsIntegrationSmokeTest < Minitest::Test
       )
     end
 
-    sqlite_raw = ::SQLite3::Database.new
     sqlite_conn = Struct.new(:raw_connection) do
       def execute(_sql)
         raise "should not be called"

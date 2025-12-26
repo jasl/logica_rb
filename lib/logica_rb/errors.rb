@@ -24,4 +24,6 @@ module LogicaRb
   class PlanValidationError < Error; end
 
   class InvalidFormatError < Error; end
+
+  class QueryOnlyViolationError < Error; end
 end

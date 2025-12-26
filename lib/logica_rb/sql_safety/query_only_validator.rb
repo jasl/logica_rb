@@ -1,0 +1,208 @@
+# frozen_string_literal: true
+
+require "set"
+
+module LogicaRb
+  module SqlSafety
+    module QueryOnlyValidator
+      BASE_FORBIDDEN_KEYWORDS = Set.new(
+        %w[
+          INSERT UPDATE DELETE MERGE CREATE DROP ALTER TRUNCATE GRANT REVOKE
+          BEGIN COMMIT ROLLBACK SET
+          VACUUM ANALYZE REINDEX
+        ]
+      ).freeze
+
+      SQLITE_FORBIDDEN_KEYWORDS = Set.new(%w[ATTACH DETACH PRAGMA]).freeze
+      PSQL_FORBIDDEN_KEYWORDS = Set.new(%w[COPY DO CALL]).freeze
+
+      WORD_TOKEN = /[A-Za-z_][A-Za-z0-9_]*/.freeze
+
+      def self.validate!(sql, engine:, allow_explain: false)
+        sql = sql.to_s
+        engine = engine.to_s
+        engine = nil if engine.empty?
+
+        unless %w[sqlite psql].include?(engine)
+          raise LogicaRb::UnsupportedEngineError, engine
+        end
+
+        cleaned = strip_comments_and_literals(sql)
+        if cleaned.include?(";")
+          raise LogicaRb::QueryOnlyViolationError, "Multiple SQL statements are not allowed"
+        end
+
+        tokens = cleaned.scan(WORD_TOKEN).map!(&:upcase)
+        if tokens.empty?
+          raise LogicaRb::QueryOnlyViolationError, "SQL must be a non-empty query"
+        end
+
+        first = tokens.first
+        allowed_first = %w[SELECT WITH]
+        allowed_first << "EXPLAIN" if allow_explain
+
+        unless allowed_first.include?(first)
+          raise LogicaRb::QueryOnlyViolationError, "Only SELECT/WITH queries are allowed"
+        end
+
+        forbidden = BASE_FORBIDDEN_KEYWORDS | (engine == "sqlite" ? SQLITE_FORBIDDEN_KEYWORDS : PSQL_FORBIDDEN_KEYWORDS)
+        hit = tokens.find { |t| forbidden.include?(t) }
+        if hit
+          raise LogicaRb::QueryOnlyViolationError, "Disallowed SQL keyword: #{hit}"
+        end
+
+        if engine == "psql" && tokens.include?("INTO")
+          raise LogicaRb::QueryOnlyViolationError, "PostgreSQL SELECT INTO is not allowed"
+        end
+
+        nil
+      end
+
+      def self.strip_comments_and_literals(sql)
+        s = sql.dup
+        s = s.b
+
+        i = 0
+        while i < s.bytesize
+          b = s.getbyte(i)
+          nb = s.getbyte(i + 1)
+
+          if b == 45 && nb == 45 # "--"
+            s.setbyte(i, 32)
+            s.setbyte(i + 1, 32)
+            i += 2
+            while i < s.bytesize
+              c = s.getbyte(i)
+              break if c == 10 # "\n"
+              s.setbyte(i, 32)
+              i += 1
+            end
+            next
+          end
+
+          if b == 47 && nb == 42 # "/*"
+            depth = 1
+            s.setbyte(i, 32)
+            s.setbyte(i + 1, 32)
+            i += 2
+            while i < s.bytesize && depth.positive?
+              c = s.getbyte(i)
+              cn = s.getbyte(i + 1)
+
+              if c == 47 && cn == 42 # "/*"
+                s.setbyte(i, 32)
+                s.setbyte(i + 1, 32)
+                i += 2
+                depth += 1
+                next
+              end
+
+              if c == 42 && cn == 47 # "*/"
+                s.setbyte(i, 32)
+                s.setbyte(i + 1, 32)
+                i += 2
+                depth -= 1
+                next
+              end
+
+              s.setbyte(i, 32) unless c == 10 # keep newlines
+              i += 1
+            end
+            next
+          end
+
+          if b == 39 # "'"
+            s.setbyte(i, 32)
+            i += 1
+            while i < s.bytesize
+              c = s.getbyte(i)
+              cn = s.getbyte(i + 1)
+
+              if c == 39 # "'"
+                if cn == 39 # "''"
+                  s.setbyte(i, 32)
+                  s.setbyte(i + 1, 32)
+                  i += 2
+                  next
+                end
+
+                s.setbyte(i, 32)
+                i += 1
+                break
+              end
+
+              s.setbyte(i, 32) unless c == 10
+              i += 1
+            end
+            next
+          end
+
+          if b == 34 # "\""
+            s.setbyte(i, 32)
+            i += 1
+            while i < s.bytesize
+              c = s.getbyte(i)
+              cn = s.getbyte(i + 1)
+
+              if c == 34
+                if cn == 34 # "\"\""
+                  s.setbyte(i, 32)
+                  s.setbyte(i + 1, 32)
+                  i += 2
+                  next
+                end
+
+                s.setbyte(i, 32)
+                i += 1
+                break
+              end
+
+              s.setbyte(i, 32) unless c == 10
+              i += 1
+            end
+            next
+          end
+
+          if b == 36 # "$"
+            tag_end = i + 1
+            while tag_end < s.bytesize
+              c = s.getbyte(tag_end)
+              break if c == 36
+              break unless (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95
+
+              tag_end += 1
+            end
+
+            if tag_end < s.bytesize && s.getbyte(tag_end) == 36
+              delim = s.byteslice(i, tag_end - i + 1)
+              (i..tag_end).each { |idx| s.setbyte(idx, 32) }
+
+              search_from = tag_end + 1
+              close_idx = s.index(delim, search_from)
+
+              if close_idx
+                (search_from...close_idx).each do |idx|
+                  s.setbyte(idx, 32) unless s.getbyte(idx) == 10
+                end
+                (close_idx...(close_idx + delim.bytesize)).each { |idx| s.setbyte(idx, 32) }
+                i = close_idx + delim.bytesize
+                next
+              end
+
+              (search_from...s.bytesize).each do |idx|
+                s.setbyte(idx, 32) unless s.getbyte(idx) == 10
+              end
+              break
+            end
+          end
+
+          i += 1
+        end
+
+        s.force_encoding(sql.encoding)
+      end
+
+      private_class_method :strip_comments_and_literals
+    end
+  end
+end

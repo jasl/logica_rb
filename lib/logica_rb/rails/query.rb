@@ -31,7 +31,9 @@ module LogicaRb
       end
 
       def result
-        @executor.select_all(sql(format: :query))
+        sql_text, engine = compiled_query_sql_and_engine
+        enforce_query_only_sql!(sql_text, engine: engine)
+        @executor.select_all(sql_text)
       end
 
       def records(model:)
@@ -39,10 +41,13 @@ module LogicaRb
       end
 
       def relation(model:, as: nil)
+        sql_text, engine = compiled_query_sql_and_engine
+        enforce_query_only_sql!(sql_text, engine: engine)
+
         alias_name = (as || @definition.as || default_alias_name).to_s
 
         safe_alias = alias_name.gsub(/[^a-zA-Z0-9_]/, "_")
-        subquery = "(#{sql(format: :query).strip})"
+        subquery = "(#{sql_text.strip})"
 
         rel = model.from(Arel.sql("#{subquery} AS #{safe_alias}"))
         rel.select("#{safe_alias}.*")
@@ -75,6 +80,19 @@ module LogicaRb
         return nil if format.to_sym == :query
 
         raise ArgumentError, "source queries require format: :query unless trusted: true"
+      end
+
+      def compiled_query_sql_and_engine
+        enforce_source_policy!(format: :query)
+        compilation = compile
+        [compilation.sql(:query), compilation.engine]
+      end
+
+      def enforce_query_only_sql!(sql, engine:)
+        return nil unless @definition.source
+        return nil if @definition.trusted
+
+        LogicaRb::SqlSafety::QueryOnlyValidator.validate!(sql, engine: engine)
       end
     end
   end
