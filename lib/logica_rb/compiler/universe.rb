@@ -118,7 +118,7 @@ module LogicaRb
         attr_reader :annotations, :user_flags, :flag_values, :default_engine
 
         def initialize(rules, user_flags)
-          @default_engine = user_flags.key?("logica_default_engine") ? user_flags["logica_default_engine"] : "sqlite"
+          @default_engine = user_flags["logica_default_engine"] || "sqlite"
           @annotations = self.class.extract_annotations(rules, restrict_to: ["@DefineFlag", "@ResetFlagValue"])
           @user_flags = user_flags
           @flag_values = build_flag_values
@@ -243,7 +243,7 @@ module LogicaRb
       end
 
       def dataset
-        default_dataset = %w[psql duckdb].include?(engine) ? "logica_home" : "logica_test"
+        default_dataset = engine == "psql" ? "logica_home" : "logica_test"
         if engine == "sqlite" && attached_databases.key?("logica_home")
           default_dataset = "logica_home"
         end
@@ -252,14 +252,13 @@ module LogicaRb
 
       def engine
         engine = extract_singleton("@Engine", @default_engine)
-        unless Dialects::DIALECTS.key?(engine) || engine == "duckdb"
-          Compiler.annotation_error("Unrecognized engine: #{engine}", @annotations["@Engine"][engine])
-        end
-        engine
+        return engine if Dialects::DIALECTS.key?(engine)
+
+        raise LogicaRb::UnsupportedEngineError, engine
       end
 
       def engine_typechecks_by_default(engine_name)
-        %w[psql duckdb].include?(engine_name)
+        %w[psql].include?(engine_name)
       end
 
       def should_typecheck

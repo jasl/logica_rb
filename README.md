@@ -1,6 +1,8 @@
 # LogicaRb
 
-Pure Logica -> SQL transpiler for SQLite and PostgreSQL. This gem **does not** connect to databases or execute SQL.
+Core gem: pure Logica -> SQL transpiler for SQLite and PostgreSQL. It does **not** connect to databases or execute SQL by default.
+
+Optional Rails/ActiveRecord integration is available via `require "logica_rb/rails"`.
 
 ## Engine support
 

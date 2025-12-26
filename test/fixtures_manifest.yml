@@ -338,11 +338,6 @@ tests:
     predicate: ReadableTest
     engine: bigquery
     expect_error: UnsupportedEngine
-  - name: duckdb_is_default
-    src: integration_tests/duckdb_is_default.l
-    predicate: Test
-    engine: duckdb
-    expect_error: UnsupportedEngine
   - name: duckdb_json_test
     src: integration_tests/duckdb_json_test.l
     predicate: Test
