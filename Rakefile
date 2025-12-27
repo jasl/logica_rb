@@ -9,6 +9,7 @@ require "bundler/gem_tasks"
 require "minitest/test_task"
 
 Minitest::TestTask.create do |t|
+  t.framework = %(require "test_helper")
   t.test_globs = ["test/*_test.rb", "test/support/**/*_test.rb", "test/sql_safety/**/*_test.rb", "test/db_smoke/**/*_test.rb", "test/parser/**/*_test.rb"]
 end
 
