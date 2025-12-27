@@ -70,7 +70,8 @@ When a report is `source` mode and `trusted: false`, execution is hardened:
 - Query-only SQL validation (blocks multi-statement and common DDL/DML keywords)
 - Imports disabled by default (`allow_imports: false`)
 - `prevent_writes` wrapper (uses `connected_to(role: :reading, prevent_writes: true)` when available, otherwise `while_preventing_writes`)
-- PostgreSQL (inside a transaction): `SET LOCAL statement_timeout`, `SET LOCAL lock_timeout`, `SET LOCAL transaction_read_only = on`
+- SQLite (untrusted): `PRAGMA query_only = 1`, `PRAGMA trusted_schema = 0` (restored after execution) — reduces write/schema attack surface
+- PostgreSQL (inside a transaction): `SET LOCAL statement_timeout`, `SET LOCAL lock_timeout`, `SET LOCAL idle_in_transaction_session_timeout` (env: `BI_IDLE_IN_TX_TIMEOUT_MS`), `SET LOCAL transaction_read_only = on`
 - Max rows cap (default `1000`) enforced via `LIMIT/OFFSET` pagination wrapper
 
 ## Production recommendations (Postgres)

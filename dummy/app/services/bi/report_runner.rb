@@ -49,10 +49,11 @@ module Bi
       sql_digest = Digest::SHA256.hexdigest(executed_sql.to_s)
       flags_digest = Digest::SHA256.hexdigest(JSON.generate(canonicalize_hash(flags)))
       tenant_id = tenant_id_for_rls
+      report_id = @report.respond_to?(:id) ? @report.id : nil
 
       result, cached =
         fetch_cached_result(
-          report_id: @report.id,
+          report_id: report_id,
           engine: engine,
           sql_digest: sql_digest,
           flags_digest: flags_digest,

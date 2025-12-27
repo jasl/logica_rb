@@ -62,9 +62,19 @@ module LogicaRb
             # Some SQLite versions/builds don't support these pragmas. Fall back to only the authorizer.
             # If we partially applied settings, best-effort revert (also rescued).
             begin
+              previous_authorizer = prev
+              db.authorizer = nil
+
               db.execute("PRAGMA query_only = #{Integer(prev_query_only)}") if defined?(prev_query_only) && !prev_query_only.nil?
+              db.execute("PRAGMA trusted_schema = #{Integer(prev_trusted_schema)}") if defined?(prev_trusted_schema) && !prev_trusted_schema.nil?
             rescue StandardError
               # ignore
+            ensure
+              begin
+                db.authorizer = previous_authorizer
+              rescue StandardError
+                # ignore
+              end
             end
 
             hardening_state = nil
