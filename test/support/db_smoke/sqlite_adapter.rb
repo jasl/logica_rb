@@ -145,7 +145,7 @@ module LogicaRb
             record[key] = entry["value"]
           end
 
-          func.result = JSON.generate(record)
+          func.result = logica_json_generate(record)
         end
 
         @db.create_function("DisassembleRecord", 1) do |func, record_json|
@@ -158,7 +158,23 @@ module LogicaRb
           record = {} unless record.is_a?(Hash)
 
           arr = record.map { |k, v| { "arg" => k.to_s, "value" => v } }
-          func.result = JSON.generate(arr)
+          func.result = logica_json_generate(arr)
+        end
+      end
+
+      def logica_json_generate(value)
+        case value
+        when Hash
+          inner =
+            value.map do |k, v|
+              "#{JSON.generate(k.to_s)}: #{logica_json_generate(v)}"
+            end.join(", ")
+
+          "{#{inner}}"
+        when Array
+          "[#{value.map { |v| logica_json_generate(v) }.join(", ")}]"
+        else
+          JSON.generate(value)
         end
       end
     end

@@ -12,27 +12,12 @@ class SqliteDbResultsTest < Minitest::Test
   MANIFEST_PATH = File.expand_path("../fixtures_manifest.yml", __dir__)
   FIXTURES_ROOT = File.expand_path("../fixtures", __dir__)
 
-  SQLITE_CASES = %w[
-    functor_arg_update_test
-    import_root_test
-    rec_small_cycle_test
-    sqlite_assignment_test
-    sqlite_combine_test
-    sqlite_composite_test
-    sqlite_functor_over_constant_test
-    sqlite_functors_test
-    sqlite_groupby_test
-    sqlite_in_expr_test
-    sqlite_math_test
-    sqlite_records_test
-    sqlite_subquery_test
-    sqlite_unwrapping_test
-    ultra_short_cycle_test
-    unification_priority_test
-  ].freeze
-
   def manifest
     @manifest ||= YAML.load_file(MANIFEST_PATH)
+  end
+
+  def db_results_entries
+    manifest.fetch("tests").fetch("sqlite").select { |e| e["db_results"] }
   end
 
   def compile_case(entry)
@@ -49,9 +34,35 @@ class SqliteDbResultsTest < Minitest::Test
   end
 
   def stable_sort_rows(rows)
-    Array(rows).sort_by do |row|
-      Array(row).map { |v| v.nil? ? [0, ""] : [1, v.to_s] }
-    end
+    Array(rows).sort_by { |row| row_sort_key(row) }
+  end
+
+  def row_sort_key(row)
+    Array(row).map { |v| v.nil? ? "" : v.to_s }.join("\u0001")
+  end
+
+  def quote_ident(name)
+    %("#{name.to_s.gsub('"', '""')}")
+  end
+
+  def identifier_sql(name)
+    str = name.to_s
+    return str if /\A[a-zA-Z_][a-zA-Z0-9_]*\z/.match?(str)
+
+    quote_ident(str)
+  end
+
+  def query_sql?(sql)
+    sql.to_s.lstrip.start_with?("SELECT", "WITH", "VALUES")
+  end
+
+  def materialize_output_table!(adapter, node_name, node_sql)
+    return unless query_sql?(node_sql)
+
+    ident = identifier_sql(node_name)
+    query = node_sql.to_s.strip.sub(/;\s*\z/, "")
+
+    adapter.exec_script("CREATE TEMP TABLE #{ident} AS #{query};")
   end
 
   def test_sqlite_db_results
@@ -61,14 +72,11 @@ class SqliteDbResultsTest < Minitest::Test
     skip "sqlite3 gem not installed (run bundle install)" unless probe
     probe.close
 
-    entries_by_name =
-      manifest
-        .fetch("tests")
-        .fetch("sqlite")
-        .each_with_object({}) { |e, h| h[e.fetch("name")] = e }
+    entries = db_results_entries
+    skip "No sqlite db_results cases marked in fixtures_manifest.yml" if entries.empty?
 
-    SQLITE_CASES.each do |name|
-      entry = entries_by_name.fetch(name)
+    entries.each do |entry|
+      name = entry.fetch("name")
       compilation = compile_case(entry)
       plan_hash = JSON.parse(compilation.plan_json(pretty: true))
 
@@ -84,8 +92,8 @@ class SqliteDbResultsTest < Minitest::Test
           node = plan_hash.fetch("config").find { |n| n["name"] == node_name }
           raise "missing output node in config: #{node_name}" if node.nil?
 
-          sql = node.dig("action", "sql")
-          actual = adapter.select_all(sql)
+          materialize_output_table!(adapter, node_name, node.dig("action", "sql"))
+          actual = adapter.select_all("SELECT * FROM #{identifier_sql(node_name)};")
 
           assert_equal expected.fetch("columns"), actual.fetch("columns"), "sqlite columns mismatch: #{name}"
           assert_equal stable_sort_rows(expected.fetch("rows")), stable_sort_rows(actual.fetch("rows")), "sqlite rows mismatch: #{name}"
