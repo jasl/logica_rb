@@ -35,11 +35,13 @@ tests:
     golden: integration_tests/sqlite_array_sub_test.txt
     predicate: Test
     runner: default
+    db_results: true
   - name: sqlite_array_test
     src: integration_tests/sqlite_array_test.l
     golden: integration_tests/sqlite_array_test.txt
     predicate: Test
     runner: default
+    db_results: true
   - name: sqlite_assignment_test
     src: integration_tests/sqlite_assignment_test.l
     golden: integration_tests/sqlite_assignment_test.txt
@@ -74,6 +76,9 @@ tests:
     golden: integration_tests/sqlite_file_test.txt
     predicate: Test
     runner: default
+    library_profile: full
+    unsafe:
+      - file_io
   - name: sqlite_flat_recursion_test
     src: integration_tests/sqlite_flat_recursion_test.l
     golden: integration_tests/sqlite_flat_recursion_test.txt
@@ -85,6 +90,7 @@ tests:
     golden: integration_tests/sqlite_funcs_test.txt
     predicate: Test
     runner: default
+    db_results: true
   - name: sqlite_functor_over_constant_test
     src: integration_tests/sqlite_functor_over_constant_test.l
     golden: integration_tests/sqlite_functor_over_constant_test.txt
@@ -165,6 +171,7 @@ tests:
     golden: integration_tests/sqlite_shortest_path_test.txt
     predicate: Test
     runner: default
+    db_results: true
   - name: sqlite_subquery_test
     src: integration_tests/sqlite_subquery_test.l
     golden: integration_tests/sqlite_subquery_test.txt
@@ -331,6 +338,7 @@ tests:
     golden: integration_tests/psql_udf_test.txt
     predicate: Test
     runner: default
+    db_results: true
   - name: psql_win_move_test
     src: integration_tests/psql_win_move_test.l
     golden: integration_tests/psql_win_move_test.txt

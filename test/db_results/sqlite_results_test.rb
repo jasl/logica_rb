@@ -17,19 +17,23 @@ class SqliteDbResultsTest < Minitest::Test
   end
 
   def db_results_entries
-    manifest.fetch("tests").fetch("sqlite").select { |e| e["db_results"] }
+    manifest.fetch("tests").fetch("sqlite").select { |e| e["db_results"] || e["unsafe"] }
   end
 
   def compile_case(entry)
     src = File.join(FIXTURES_ROOT, entry.fetch("src"))
     predicate = entry["predicate"] || "Test"
     import_root = entry["import_root"] ? File.join(FIXTURES_ROOT, entry["import_root"]) : FIXTURES_ROOT
+    library_profile = entry["library_profile"]
+    capabilities = entry["capabilities"] || []
 
     LogicaRb::Transpiler.compile_file(
       src,
       predicates: predicate,
       engine: "sqlite",
-      import_root: import_root
+      import_root: import_root,
+      library_profile: library_profile,
+      capabilities: capabilities
     )
   end
 
@@ -75,7 +79,15 @@ class SqliteDbResultsTest < Minitest::Test
     entries = db_results_entries
     skip "No sqlite db_results cases marked in fixtures_manifest.yml" if entries.empty?
 
-    entries.each do |entry|
+    unsafe_enabled = ENV["LOGICA_UNSAFE_IO"] == "1"
+    runnable =
+      entries.select do |entry|
+        unsafe = Array(entry["unsafe"]).compact
+        unsafe.empty? || unsafe_enabled
+      end
+    skip "No sqlite db_results cases enabled (set LOGICA_UNSAFE_IO=1 for unsafe entries)" if runnable.empty?
+
+    runnable.each do |entry|
       name = entry.fetch("name")
       compilation = compile_case(entry)
       plan_hash = JSON.parse(compilation.plan_json(pretty: true))

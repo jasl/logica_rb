@@ -19,12 +19,16 @@ class PsqlDbSmokeTest < Minitest::Test
     src = File.join(FIXTURES_ROOT, entry.fetch("src"))
     predicate = entry["predicate"] || "Test"
     import_root = entry["import_root"] ? File.join(FIXTURES_ROOT, entry["import_root"]) : FIXTURES_ROOT
+    library_profile = entry["library_profile"]
+    capabilities = entry["capabilities"] || []
 
     LogicaRb::Transpiler.compile_file(
       src,
       predicates: predicate,
       engine: "psql",
-      import_root: import_root
+      import_root: import_root,
+      library_profile: library_profile,
+      capabilities: capabilities
     )
   end
 

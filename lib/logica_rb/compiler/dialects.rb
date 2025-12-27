@@ -7,14 +7,20 @@ require_relative "dialect_libraries/psql_library"
 module LogicaRb
   module Compiler
     module Dialects
-      def self.get(engine)
+      def self.get(engine, library_profile: :safe)
         klass = DIALECTS.fetch(engine) do
           raise ArgumentError, "Unknown dialect: #{engine}"
         end
-        klass.new
+        klass.new(library_profile: library_profile)
       end
 
       class Dialect
+        def initialize(library_profile: :safe)
+          @library_profile = normalize_library_profile(library_profile)
+        end
+
+        attr_reader :library_profile
+
         def name
           "Generic"
         end
@@ -53,6 +59,15 @@ module LogicaRb
 
         def is_postgresqlish?
           false
+        end
+
+        private
+
+        def normalize_library_profile(value)
+          profile = (value || :safe).to_sym
+          return profile if %i[safe full].include?(profile)
+
+          raise ArgumentError, "Unknown library_profile: #{value.inspect} (expected :safe or :full)"
         end
       end
 
@@ -107,7 +122,14 @@ module LogicaRb
         end
 
         def library_program
-          DialectLibraries::SqliteLibrary::LIBRARY
+          case library_profile
+          when :safe
+            DialectLibraries::SqliteLibrary::SAFE_LIBRARY
+          when :full
+            DialectLibraries::SqliteLibrary::FULL_LIBRARY
+          else
+            raise ArgumentError, "Unknown library_profile: #{library_profile.inspect}"
+          end
         end
 
         def unnest_phrase
@@ -158,7 +180,14 @@ module LogicaRb
         end
 
         def library_program
-          DialectLibraries::PsqlLibrary::LIBRARY
+          case library_profile
+          when :safe
+            DialectLibraries::PsqlLibrary::SAFE_LIBRARY
+          when :full
+            DialectLibraries::PsqlLibrary::FULL_LIBRARY
+          else
+            raise ArgumentError, "Unknown library_profile: #{library_profile.inspect}"
+          end
         end
 
         def unnest_phrase

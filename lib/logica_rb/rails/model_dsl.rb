@@ -7,7 +7,7 @@ module LogicaRb
         base.class_attribute :logica_queries, default: {}, instance_accessor: false
       end
 
-      def logica_query(name, file:, predicate:, engine: :auto, format: :query, flags: {}, as: nil, import_root: nil)
+      def logica_query(name, file:, predicate:, engine: :auto, format: :query, flags: {}, as: nil, import_root: nil, capabilities: nil, library_profile: nil)
         name = name.to_sym
 
         definition = QueryDefinition.new(
@@ -18,7 +18,9 @@ module LogicaRb
           format: format,
           flags: flags,
           as: as,
-          import_root: import_root
+          import_root: import_root,
+          capabilities: capabilities,
+          library_profile: library_profile
         )
 
         self.logica_queries = logica_queries.merge(name => definition)
@@ -54,7 +56,9 @@ module LogicaRb
           engine: resolved_engine,
           flags: resolved_flags,
           as: overrides.fetch(:as, base_definition.as),
-          import_root: resolved_import_root
+          import_root: resolved_import_root,
+          capabilities: overrides.fetch(:capabilities, base_definition.capabilities),
+          library_profile: overrides.fetch(:library_profile, base_definition.library_profile)
         )
 
         cache = cfg.cache ? LogicaRb::Rails.cache : nil

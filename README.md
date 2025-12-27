@@ -101,6 +101,8 @@ LogicaRb::Rails.configure do |c|
   c.cache_mode = :mtime
   c.default_engine = :auto # auto-detect from the ActiveRecord connection
   c.allowed_import_prefixes = ["datasets"] # required for source + allow_imports: true
+  c.library_profile = :safe # :safe (default) or :full
+  c.capabilities = [] # e.g. [:file_io, :external_exec, :sql_expr] (use with care)
 end
 ```
 
@@ -200,6 +202,8 @@ Rake tasks are file-based; `source:` is intended for runtime inputs and is not s
 
 - `LogicaRb::Rails::Query#relation` uses `Arel.sql` to wrap the compiled subquery. Treat compilation output as trusted code, and do **not** pass untrusted user input into Logica flags without validation.
 - `ActiveRecord::Relation#with` also accepts `Arel.sql(...)` for SQL literals, but this must only wrap known-safe SQL. Do not interpolate request params/model attributes/etc. into SQL strings.
+- Default `library_profile: :safe` excludes Logica library rules that perform file IO / external execution / console side effects. Enable explicitly via `LogicaRb::Rails.configure { |c| c.library_profile = :full }` (or per-query `library_profile: :full`) only when you trust the source.
+- For runtime-provided `source:` with `trusted: false`, `SqlExpr` and other dangerous built-ins are rejected by default. If you intentionally need them, you must opt in explicitly via `capabilities:` (e.g. `capabilities: [:sql_expr]`).
 
 ### BI/后台自定义查询（source 模式）
 
@@ -215,6 +219,8 @@ Operational safety suggestions for runtime-provided source:
 - Use a read-only DB role and restrict accessible schemas/tables.
 - Set timeouts / statement limits (e.g., PostgreSQL `statement_timeout`).
 - Do not splice request params directly into Logica source or `flags` without validation.
+- PostgreSQL: avoid granting roles like `pg_read_server_files` / `pg_execute_server_program` and avoid superuser for apps serving untrusted queries.
+- SQLite: do not enable extension loading, and consider SQLite defensive mode when validating untrusted SQL (if available in your SQLite build).
 
 Plan docs:
 - `docs/PLAN_SCHEMA.md`

@@ -12,10 +12,23 @@ module LogicaRb
     SUPPORTED_ENGINES = %w[sqlite psql].freeze
     SUPPORTED_FORMATS = %w[query script plan].freeze
 
-    def self.compile_string(source, predicate: nil, predicates: nil, format: :script, engine: nil, user_flags: {}, import_root: nil)
+    def self.compile_string(
+      source,
+      predicate: nil,
+      predicates: nil,
+      format: :script,
+      engine: nil,
+      user_flags: {},
+      import_root: nil,
+      library_profile: nil,
+      capabilities: []
+    )
       engine = engine&.to_s
       predicates = normalize_predicates(predicate: predicate, predicates: predicates)
       validate_format(format)
+
+      library_profile = normalize_library_profile(library_profile)
+      capabilities = normalize_capabilities(capabilities)
 
       parsed_rules = Parser.parse_file(source, import_root: import_root)["rule"]
       resolved_engine = resolve_engine(parsed_rules, user_flags: user_flags, engine_override: engine)
@@ -36,7 +49,7 @@ module LogicaRb
 
       predicates.each do |predicate|
         program_rules = LogicaRb::Util.deep_copy(rules_for_compile)
-        program = Compiler::LogicaProgram.new(program_rules, user_flags: effective_user_flags)
+        program = Compiler::LogicaProgram.new(program_rules, user_flags: effective_user_flags, library_profile: library_profile)
         formatted_sql = program.formatted_predicate_sql(predicate)
         execution = program.execution
 
@@ -64,11 +77,23 @@ module LogicaRb
         metadata: {
           "import_root" => import_root,
           "user_flags_keys" => effective_user_flags.keys.sort,
+          "library_profile" => library_profile.to_s,
+          "capabilities" => capabilities.map(&:to_s).sort,
         }
       )
     end
 
-    def self.compile_file(path, predicate: nil, predicates: nil, format: :script, engine: nil, user_flags: {}, import_root: nil)
+    def self.compile_file(
+      path,
+      predicate: nil,
+      predicates: nil,
+      format: :script,
+      engine: nil,
+      user_flags: {},
+      import_root: nil,
+      library_profile: nil,
+      capabilities: []
+    )
       source = File.read(path)
       compile_string(
         source,
@@ -77,7 +102,9 @@ module LogicaRb
         format: format,
         engine: engine,
         user_flags: user_flags,
-        import_root: import_root
+        import_root: import_root,
+        library_profile: library_profile,
+        capabilities: capabilities
       )
     end
 
@@ -125,6 +152,24 @@ module LogicaRb
         end
         engines.first
       end
+
+    def self.normalize_library_profile(value)
+      profile = (value || :safe).to_sym
+      return profile if %i[safe full].include?(profile)
+
+      raise ArgumentError, "Unknown library_profile: #{value.inspect} (expected :safe or :full)"
+    end
+
+    def self.normalize_capabilities(value)
+      Array(value)
+        .compact
+        .map { |c| c.is_a?(Symbol) ? c : c.to_s }
+        .map(&:to_s)
+        .map(&:strip)
+        .reject(&:empty?)
+        .map(&:to_sym)
+        .uniq
+    end
 
     def self.rewrite_engine_annotations(parsed_rules, engine_override)
       rules = LogicaRb::Util.deep_copy(parsed_rules)

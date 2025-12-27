@@ -61,6 +61,22 @@ class QueryOnlyValidatorTest < Minitest::Test
     LogicaRb::SqlSafety::QueryOnlyValidator.validate!("EXPLAIN SELECT 1", engine: "sqlite", allow_explain: true)
   end
 
+  def test_rejects_dangerous_functions_sqlite
+    assert_raises(LogicaRb::SqlSafety::Violation) do
+      LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT load_extension('x')", engine: "sqlite")
+    end
+  end
+
+  def test_rejects_dangerous_functions_psql
+    assert_raises(LogicaRb::SqlSafety::Violation) do
+      LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT pg_read_file('/etc/passwd')", engine: "psql")
+    end
+
+    assert_raises(LogicaRb::SqlSafety::Violation) do
+      LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT set_config('statement_timeout','0',true)", engine: "psql")
+    end
+  end
+
   def test_ignores_strings_and_comments
     LogicaRb::SqlSafety::QueryOnlyValidator.validate!(
       "SELECT 'DROP TABLE users; INSERT INTO x VALUES (1)' AS message\n",
@@ -69,6 +85,16 @@ class QueryOnlyValidatorTest < Minitest::Test
 
     LogicaRb::SqlSafety::QueryOnlyValidator.validate!(
       "SELECT 1 -- DROP TABLE users; INSERT INTO x VALUES (1)\n",
+      engine: "sqlite"
+    )
+
+    LogicaRb::SqlSafety::QueryOnlyValidator.validate!(
+      "SELECT 'pg_read_file(/etc/passwd)' AS msg\n",
+      engine: "psql"
+    )
+
+    LogicaRb::SqlSafety::QueryOnlyValidator.validate!(
+      "SELECT 1 /* load_extension('x') */\n",
       engine: "sqlite"
     )
   end

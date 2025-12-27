@@ -16,9 +16,20 @@ module LogicaRb
       SQLITE_FORBIDDEN_KEYWORDS = Set.new(%w[ATTACH DETACH PRAGMA]).freeze
       PSQL_FORBIDDEN_KEYWORDS = Set.new(%w[COPY DO CALL]).freeze
 
+      SQLITE_FORBIDDEN_FUNCTIONS = Set.new(%w[load_extension readfile writefile]).freeze
+      PSQL_FORBIDDEN_FUNCTIONS = Set.new(
+        %w[
+          pg_read_file pg_read_binary_file pg_ls_dir pg_stat_file
+          lo_import lo_export
+          dblink_connect
+          set_config
+          pg_sleep
+        ]
+      ).freeze
+
       WORD_TOKEN = /[A-Za-z_][A-Za-z0-9_]*/.freeze
 
-      def self.validate!(sql, engine: nil, allow_explain: false)
+      def self.validate!(sql, engine: nil, allow_explain: false, forbidden_functions: nil)
         sql = sql.to_s
         engine = engine.to_s
         engine = nil if engine.empty?
@@ -43,6 +54,18 @@ module LogicaRb
         hit = tokens.find { |t| forbidden.include?(t) }
         if hit
           raise LogicaRb::SqlSafety::Violation.new(:forbidden_keyword, "Disallowed SQL keyword: #{hit}")
+        end
+
+        forbidden_functions_set =
+          if forbidden_functions.nil?
+            forbidden_functions_for_engine(engine)
+          else
+            normalize_forbidden_functions(forbidden_functions)
+          end
+
+        hit_function = first_forbidden_function_call(cleaned, forbidden_functions_set)
+        if hit_function
+          raise LogicaRb::SqlSafety::Violation.new(:forbidden_function, "Disallowed SQL function: #{hit_function}")
         end
 
         if (engine.nil? || engine == "psql") && tokens.include?("INTO")
@@ -74,6 +97,49 @@ module LogicaRb
         end
 
         keywords
+      end
+
+      def self.forbidden_functions_for_engine(engine)
+        funcs = Set.new
+
+        case engine
+        when "sqlite"
+          funcs.merge(SQLITE_FORBIDDEN_FUNCTIONS)
+        when "psql"
+          funcs.merge(PSQL_FORBIDDEN_FUNCTIONS)
+        else
+          funcs.merge(SQLITE_FORBIDDEN_FUNCTIONS)
+          funcs.merge(PSQL_FORBIDDEN_FUNCTIONS)
+        end
+
+        funcs
+      end
+
+      def self.normalize_forbidden_functions(value)
+        Array(value)
+          .compact
+          .map(&:to_s)
+          .map(&:strip)
+          .reject(&:empty?)
+          .map(&:downcase)
+          .to_set
+      end
+
+      def self.first_forbidden_function_call(cleaned_sql, forbidden_functions_set)
+        return nil if forbidden_functions_set.empty?
+
+        tokens = cleaned_sql.scan(/[A-Za-z_][A-Za-z0-9_]*|[().]/)
+        tokens.each_with_index do |tok, idx|
+          next unless WORD_TOKEN.match?(tok)
+          next unless tokens[idx + 1] == "("
+
+          name = tok.downcase
+          next unless forbidden_functions_set.include?(name)
+
+          return tok
+        end
+
+        nil
       end
 
       def self.strip_comments_and_literals(sql)

@@ -7,7 +7,9 @@ module LogicaRb
       :cache,
       :cache_mode,
       :default_engine,
-      :allowed_import_prefixes
+      :allowed_import_prefixes,
+      :capabilities,
+      :library_profile
     )
   end
 end

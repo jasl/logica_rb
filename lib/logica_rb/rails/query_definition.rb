@@ -13,7 +13,9 @@ module LogicaRb
       :as,
       :import_root,
       :trusted,
-      :allow_imports
+      :allow_imports,
+      :capabilities,
+      :library_profile
     ) do
       def initialize(
         name:,
@@ -26,7 +28,9 @@ module LogicaRb
         as: nil,
         import_root: nil,
         trusted: nil,
-        allow_imports: nil
+        allow_imports: nil,
+        capabilities: nil,
+        library_profile: nil
       )
         file = normalize_optional_string(file)
         source = normalize_optional_string(source)
@@ -60,6 +64,25 @@ module LogicaRb
             !!allow_imports
           end
 
+        effective_capabilities =
+          if capabilities.nil?
+            if source && !trusted
+              []
+            else
+              LogicaRb::Rails.configuration.capabilities
+            end
+          else
+            LogicaRb::Rails.normalize_capabilities(capabilities)
+          end
+
+        effective_library_profile =
+          if source && !trusted
+            :safe
+          else
+            base = LogicaRb::Rails.configuration.library_profile
+            LogicaRb::Rails.normalize_library_profile(library_profile.nil? ? base : library_profile)
+          end
+
         super(
           name: name&.to_sym,
           file: file,
@@ -71,7 +94,9 @@ module LogicaRb
           as: as,
           import_root: import_root,
           trusted: trusted,
-          allow_imports: allow_imports
+          allow_imports: allow_imports,
+          capabilities: effective_capabilities,
+          library_profile: effective_library_profile
         )
       end
 

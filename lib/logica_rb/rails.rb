@@ -29,7 +29,9 @@ module LogicaRb
       cache: true,
       cache_mode: :mtime,
       default_engine: nil,
-      allowed_import_prefixes: nil
+      allowed_import_prefixes: nil,
+      capabilities: [],
+      library_profile: :safe
     )
 
     @configuration = DEFAULT_CONFIGURATION
@@ -44,6 +46,8 @@ module LogicaRb
       options.cache_mode = cfg.cache_mode
       options.default_engine = cfg.default_engine
       options.allowed_import_prefixes = cfg.allowed_import_prefixes
+      options.capabilities = cfg.capabilities
+      options.library_profile = cfg.library_profile
 
       yield options if block_given?
 
@@ -52,7 +56,9 @@ module LogicaRb
         cache: options.cache.nil? ? cfg.cache : !!options.cache,
         cache_mode: (options.cache_mode || cfg.cache_mode || :mtime).to_sym,
         default_engine: options.default_engine&.to_s,
-        allowed_import_prefixes: normalize_allowed_import_prefixes(options.allowed_import_prefixes)
+        allowed_import_prefixes: normalize_allowed_import_prefixes(options.allowed_import_prefixes),
+        capabilities: options.capabilities.nil? ? cfg.capabilities : normalize_capabilities(options.capabilities),
+        library_profile: normalize_library_profile(options.library_profile || cfg.library_profile || :safe)
       )
 
       clear_cache!
@@ -77,13 +83,17 @@ module LogicaRb
       cache_mode = app_cfg.respond_to?(:cache_mode) ? app_cfg.cache_mode : nil
       default_engine = app_cfg.respond_to?(:default_engine) ? app_cfg.default_engine : nil
       allowed_import_prefixes = app_cfg.respond_to?(:allowed_import_prefixes) ? app_cfg.allowed_import_prefixes : nil
+      capabilities = app_cfg.respond_to?(:capabilities) ? app_cfg.capabilities : nil
+      library_profile = app_cfg.respond_to?(:library_profile) ? app_cfg.library_profile : nil
 
       Configuration.new(
         import_root: import_root.nil? ? base.import_root : import_root,
         cache: cache.nil? ? base.cache : !!cache,
         cache_mode: cache_mode.nil? ? base.cache_mode : cache_mode.to_sym,
         default_engine: default_engine.nil? ? base.default_engine : default_engine&.to_s,
-        allowed_import_prefixes: allowed_import_prefixes.nil? ? base.allowed_import_prefixes : normalize_allowed_import_prefixes(allowed_import_prefixes)
+        allowed_import_prefixes: allowed_import_prefixes.nil? ? base.allowed_import_prefixes : normalize_allowed_import_prefixes(allowed_import_prefixes),
+        capabilities: capabilities.nil? ? base.capabilities : normalize_capabilities(capabilities),
+        library_profile: library_profile.nil? ? base.library_profile : normalize_library_profile(library_profile)
       )
     end
 
@@ -91,6 +101,23 @@ module LogicaRb
       return nil if value.nil?
 
       Array(value).compact.map(&:to_s).map(&:strip).reject(&:empty?)
+    end
+
+    def self.normalize_capabilities(value)
+      Array(value)
+        .compact
+        .map { |c| c.is_a?(Symbol) ? c.to_s : c.to_s }
+        .map(&:strip)
+        .reject(&:empty?)
+        .map(&:to_sym)
+        .uniq
+    end
+
+    def self.normalize_library_profile(value)
+      profile = (value || :safe).to_sym
+      return profile if %i[safe full].include?(profile)
+
+      raise ArgumentError, "Unknown library_profile: #{value.inspect} (expected :safe or :full)"
     end
 
     def self.cache
@@ -125,7 +152,9 @@ module LogicaRb
       import_root: nil,
       trusted: nil,
       allow_imports: nil,
-      as: nil
+      as: nil,
+      capabilities: nil,
+      library_profile: nil
     )
       connection ||= defined?(::ActiveRecord::Base) ? ::ActiveRecord::Base.connection : nil
       unless connection
@@ -146,7 +175,9 @@ module LogicaRb
         as: as,
         import_root: import_root,
         trusted: trusted,
-        allow_imports: allow_imports
+        allow_imports: allow_imports,
+        capabilities: capabilities,
+        library_profile: library_profile
       )
 
       cfg = configuration

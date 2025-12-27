@@ -40,6 +40,8 @@ module LogicaRb
         normalized_flags = flags.transform_keys(&:to_s)
 
         allow_imports = !!definition.allow_imports
+        library_profile = (definition.library_profile || :safe).to_sym
+        capabilities = Array(definition.capabilities).compact.map { |c| c.is_a?(Symbol) ? c.to_s : c.to_s }.map(&:strip).reject(&:empty?).sort
 
         base = {
           cache_mode: cache_mode.to_s,
@@ -49,6 +51,8 @@ module LogicaRb
           flags: normalized_flags.sort.to_h,
           import_root: import_root_key(import_root),
           allow_imports: allow_imports,
+          library_profile: library_profile.to_s,
+          capabilities: capabilities,
         }
 
         if definition.file
@@ -80,6 +84,8 @@ module LogicaRb
         flags = (definition.flags || {}).transform_keys(&:to_s)
 
         allow_imports = !!definition.allow_imports
+        library_profile = (definition.library_profile || :safe).to_sym
+        capabilities = Array(definition.capabilities)
 
         compilation =
           if definition.file
@@ -93,19 +99,27 @@ module LogicaRb
               predicates: predicate,
               engine: engine,
               user_flags: flags,
-              import_root: import_root_for_parser(import_root)
+              import_root: import_root_for_parser(import_root),
+              library_profile: library_profile,
+              capabilities: capabilities
             )
           else
             source_text = definition.source.to_s
             ensure_imports_allowed!(allow_imports: allow_imports, source: source_text)
             ensure_source_imports_whitelisted!(allow_imports: allow_imports, source: source_text, import_root: import_root_for_parser(import_root))
+            if !definition.trusted
+              parsed_rules = LogicaRb::Parser.parse_file(source_text, import_root: import_root_for_parser(import_root))["rule"]
+              LogicaRb::SourceSafety::Validator.validate!(parsed_rules, engine: engine, capabilities: capabilities)
+            end
 
             LogicaRb::Transpiler.compile_string(
               source_text,
               predicates: predicate,
               engine: engine,
               user_flags: flags,
-              import_root: import_root_for_parser(import_root)
+              import_root: import_root_for_parser(import_root),
+              library_profile: library_profile,
+              capabilities: capabilities
             )
           end
 

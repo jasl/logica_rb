@@ -87,12 +87,16 @@ namespace :goldens do
       src = File.join(fixtures_root, entry.fetch("src"))
       predicate = entry["predicate"] || "Test"
       import_root = entry["import_root"] ? File.join(fixtures_root, entry["import_root"]) : fixtures_root
+      library_profile = entry["library_profile"]
+      capabilities = entry["capabilities"] || []
 
       compilation = LogicaRb::Transpiler.compile_file(
         src,
         predicates: predicate,
         engine: engine,
-        import_root: import_root
+        import_root: import_root,
+        library_profile: library_profile,
+        capabilities: capabilities
       )
 
       name = entry.fetch("name")

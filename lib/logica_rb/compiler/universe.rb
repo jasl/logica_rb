@@ -463,7 +463,7 @@ module LogicaRb
                   :custom_aggregation_semigroup, :custom_udf_psql_type, :functors, :typing_preamble,
                   :required_type_definitions, :predicate_signatures, :typing_engine
 
-      def initialize(rules, table_aliases: nil, user_flags: nil)
+      def initialize(rules, table_aliases: nil, user_flags: nil, library_profile: :safe)
         @raw_rules = rules
         rules = unfold_recursion(rules)
         @preparsed_rules = rules
@@ -473,6 +473,7 @@ module LogicaRb
         @table_aliases = table_aliases || {}
         @execution = nil
         @user_flags = user_flags || {}
+        @library_profile = library_profile
         @annotations = Annotations.new(rules, @user_flags)
         @flag_values = @annotations.flag_values
         @custom_udfs = {}
@@ -489,7 +490,7 @@ module LogicaRb
         @functors = nil
 
         extended_rules = run_makes(rules)
-        library_rules = LogicaRb::Parser.parse_file(Dialects.get(@annotations.engine).library_program)["rule"]
+        library_rules = LogicaRb::Parser.parse_file(Dialects.get(@annotations.engine, library_profile: library_profile).library_program)["rule"]
         extended_rules.concat(library_rules)
 
         extended_rules.each do |rule|
@@ -830,7 +831,7 @@ module LogicaRb
         @execution.main_predicate = main_predicate
         @execution.used_predicates = @functors ? @functors.args_of[main_predicate] : []
         @execution.dependencies_of = @functors ? @functors.args_of : {}
-        @execution.dialect = Dialects.get(@annotations.engine)
+        @execution.dialect = Dialects.get(@annotations.engine, library_profile: @library_profile)
         @execution.iterations = @annotations.iterations
       end
 
