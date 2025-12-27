@@ -28,13 +28,16 @@ last_names = %w[
   Adams Baker Carter Davis Edwards Flores Garcia Harris Jackson Kim Lopez Miller Nguyen Patel Reed Smith Turner
 ].freeze
 statuses = %w[placed shipped delivered refunded].freeze
+tenant_ids = [1, 2].freeze
 
 unless Customer.exists? || Order.exists?
   now = Time.current
 
   customers =
     customers_count.times.map do
+      tenant_id = tenant_ids.sample(random: rng)
       Customer.create!(
+        tenant_id: tenant_id,
         name: "#{first_names.sample(random: rng)} #{last_names.sample(random: rng)}",
         region: regions.sample(random: rng),
         created_at: now - rng.rand(0...days).days,
@@ -44,8 +47,10 @@ unless Customer.exists? || Order.exists?
 
   orders_count.times do
     ordered_at = now - rng.rand(0...days).days - rng.rand(0..86_399).seconds
+    customer = customers.sample(random: rng)
     Order.create!(
-      customer: customers.sample(random: rng),
+      tenant_id: customer.tenant_id,
+      customer: customer,
       amount_cents: rng.rand(500..50_000),
       status: statuses.sample(random: rng),
       ordered_at: ordered_at,

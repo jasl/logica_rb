@@ -337,8 +337,6 @@ module LogicaRb
 
         s.force_encoding(sql.encoding)
       end
-
-      private_class_method :strip_comments_and_literals
     end
   end
 end

@@ -53,6 +53,7 @@ module LogicaRb
           allow_imports: allow_imports,
           library_profile: library_profile.to_s,
           capabilities: capabilities,
+          access_policy: definition.access_policy&.cache_key_data(engine: engine),
         }
 
         if definition.file
@@ -109,7 +110,8 @@ module LogicaRb
             ensure_source_imports_whitelisted!(allow_imports: allow_imports, source: source_text, import_root: import_root_for_parser(import_root))
             if !definition.trusted
               parsed_rules = LogicaRb::Parser.parse_file(source_text, import_root: import_root_for_parser(import_root))["rule"]
-              LogicaRb::SourceSafety::Validator.validate!(parsed_rules, engine: engine, capabilities: capabilities)
+              policy_trust = definition.access_policy&.trust || :untrusted
+              LogicaRb::SourceSafety::Validator.validate!(parsed_rules, engine: engine, trust: policy_trust, capabilities: capabilities)
             end
 
             LogicaRb::Transpiler.compile_string(

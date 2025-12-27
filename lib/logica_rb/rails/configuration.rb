@@ -9,7 +9,8 @@ module LogicaRb
       :default_engine,
       :allowed_import_prefixes,
       :capabilities,
-      :library_profile
+      :library_profile,
+      :access_policy
     )
   end
 end

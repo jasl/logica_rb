@@ -7,7 +7,24 @@ module LogicaRb
         base.class_attribute :logica_queries, default: {}, instance_accessor: false
       end
 
-      def logica_query(name, file:, predicate:, engine: :auto, format: :query, flags: {}, as: nil, import_root: nil, capabilities: nil, library_profile: nil)
+      def logica_query(
+        name,
+        file:,
+        predicate:,
+        engine: :auto,
+        format: :query,
+        flags: {},
+        as: nil,
+        import_root: nil,
+        capabilities: nil,
+        library_profile: nil,
+        access_policy: nil,
+        allowed_relations: nil,
+        allowed_schemas: nil,
+        denied_schemas: nil,
+        tenant: nil,
+        timeouts: nil
+      )
         name = name.to_sym
 
         definition = QueryDefinition.new(
@@ -20,7 +37,13 @@ module LogicaRb
           as: as,
           import_root: import_root,
           capabilities: capabilities,
-          library_profile: library_profile
+          library_profile: library_profile,
+          access_policy: access_policy,
+          allowed_relations: allowed_relations,
+          allowed_schemas: allowed_schemas,
+          denied_schemas: denied_schemas,
+          tenant: tenant,
+          timeouts: timeouts
         )
 
         self.logica_queries = logica_queries.merge(name => definition)
@@ -49,16 +72,26 @@ module LogicaRb
 
         resolved_flags = (base_definition.flags || {}).merge(overrides[:flags] || {})
 
-        definition = base_definition.with(
+        definition = QueryDefinition.new(
+          name: base_definition.name,
           file: overrides.fetch(:file, base_definition.file),
+          source: overrides.fetch(:source, base_definition.source),
           predicate: overrides.fetch(:predicate, base_definition.predicate),
           format: overrides.fetch(:format, base_definition.format || :query).to_sym,
           engine: resolved_engine,
           flags: resolved_flags,
           as: overrides.fetch(:as, base_definition.as),
           import_root: resolved_import_root,
+          trusted: overrides.fetch(:trusted, base_definition.trusted),
+          allow_imports: overrides.fetch(:allow_imports, base_definition.allow_imports),
           capabilities: overrides.fetch(:capabilities, base_definition.capabilities),
-          library_profile: overrides.fetch(:library_profile, base_definition.library_profile)
+          library_profile: overrides.fetch(:library_profile, base_definition.library_profile),
+          access_policy: overrides.fetch(:access_policy, base_definition.access_policy),
+          allowed_relations: overrides.fetch(:allowed_relations, nil),
+          allowed_schemas: overrides.fetch(:allowed_schemas, nil),
+          denied_schemas: overrides.fetch(:denied_schemas, nil),
+          tenant: overrides.fetch(:tenant, nil),
+          timeouts: overrides.fetch(:timeouts, nil)
         )
 
         cache = cfg.cache ? LogicaRb::Rails.cache : nil

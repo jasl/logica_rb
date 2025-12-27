@@ -134,12 +134,19 @@ module Bi
             conn.execute("SET LOCAL statement_timeout = '#{DEFAULT_STATEMENT_TIMEOUT_MS}ms'")
             conn.execute("SET LOCAL lock_timeout = '#{DEFAULT_LOCK_TIMEOUT_MS}ms'")
             conn.execute("SET LOCAL transaction_read_only = on")
+            conn.execute("SET LOCAL app.tenant_id = '#{tenant_id_for_rls}'")
             conn.select_all(sql)
           end
         else
           conn.select_all(sql)
         end
       end
+    end
+
+    def tenant_id_for_rls
+      Integer(ENV.fetch("BI_TENANT_ID", "1"))
+    rescue ArgumentError, TypeError
+      1
     end
 
     def with_prevent_writes

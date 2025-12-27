@@ -15,7 +15,8 @@ module LogicaRb
       :trusted,
       :allow_imports,
       :capabilities,
-      :library_profile
+      :library_profile,
+      :access_policy
     ) do
       def initialize(
         name:,
@@ -30,7 +31,13 @@ module LogicaRb
         trusted: nil,
         allow_imports: nil,
         capabilities: nil,
-        library_profile: nil
+        library_profile: nil,
+        access_policy: nil,
+        allowed_relations: nil,
+        allowed_schemas: nil,
+        denied_schemas: nil,
+        tenant: nil,
+        timeouts: nil
       )
         file = normalize_optional_string(file)
         source = normalize_optional_string(source)
@@ -66,7 +73,9 @@ module LogicaRb
 
         effective_capabilities =
           if capabilities.nil?
-            if source && !trusted
+            if !access_policy.nil?
+              LogicaRb::Rails.normalize_access_policy(access_policy).effective_capabilities
+            elsif source && !trusted
               []
             else
               LogicaRb::Rails.configuration.capabilities
@@ -83,6 +92,39 @@ module LogicaRb
             LogicaRb::Rails.normalize_library_profile(library_profile.nil? ? base : library_profile)
           end
 
+        base_policy = LogicaRb::Rails.normalize_access_policy(LogicaRb::Rails.configuration.access_policy)
+
+        merged_policy =
+          if access_policy.nil?
+            base_policy
+          else
+            merge_access_policies(base_policy, LogicaRb::Rails.normalize_access_policy(access_policy))
+          end
+
+        override_policy =
+          if allowed_relations.nil? && allowed_schemas.nil? && denied_schemas.nil? && tenant.nil? && timeouts.nil?
+            nil
+          else
+            LogicaRb::AccessPolicy.new(
+              allowed_relations: allowed_relations,
+              allowed_schemas: allowed_schemas,
+              denied_schemas: denied_schemas,
+              tenant: tenant,
+              timeouts: timeouts
+            )
+          end
+
+        merged_policy = merge_access_policies(merged_policy, override_policy) if override_policy
+
+        trust_symbol = trusted ? :trusted : :untrusted
+        merged_policy ||= LogicaRb::AccessPolicy.new
+
+        effective_policy =
+          merged_policy.with(
+            trust: trust_symbol,
+            capabilities: effective_capabilities
+          )
+
         super(
           name: name&.to_sym,
           file: file,
@@ -96,7 +138,8 @@ module LogicaRb
           trusted: trusted,
           allow_imports: allow_imports,
           capabilities: effective_capabilities,
-          library_profile: effective_library_profile
+          library_profile: effective_library_profile,
+          access_policy: effective_policy
         )
       end
 
@@ -114,6 +157,21 @@ module LogicaRb
 
         return nil if str.empty?
         str
+      end
+
+      def merge_access_policies(base, override)
+        return override if base.nil?
+        return base if override.nil?
+
+        updates = {}
+        %i[engine trust capabilities allowed_relations allowed_schemas denied_schemas tenant timeouts].each do |key|
+          value = override.public_send(key)
+          next if value.nil?
+
+          updates[key] = value
+        end
+
+        updates.empty? ? base : base.with(**updates)
       end
     end
   end

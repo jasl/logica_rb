@@ -4,16 +4,6 @@ require "set"
 
 module LogicaRb
   module SourceSafety
-    class Violation < LogicaRb::Error
-      attr_reader :reason, :predicate_name
-
-      def initialize(reason, message = nil, predicate_name: nil)
-        @reason = reason
-        @predicate_name = predicate_name
-        super(message || reason.to_s)
-      end
-    end
-
     module Validator
       FORBIDDEN_CALLS = {
         "SqlExpr" => :sql_expr,
@@ -26,8 +16,14 @@ module LogicaRb
         "Intelligence" => :external_exec,
       }.freeze
 
-      def self.validate!(parsed_rules, engine:, capabilities: [])
+      def self.validate!(parsed_rules, engine:, trust: :untrusted, capabilities: [])
+        trust = :untrusted if trust.nil?
+        trust = trust.is_a?(String) ? trust.strip.to_sym : trust.to_sym
+        return nil unless trust == :untrusted
+
         capabilities_set = normalize_capabilities(capabilities)
+
+        validate_ground_annotations!(parsed_rules, capabilities_set: capabilities_set)
 
         each_call_predicate_name(parsed_rules) do |predicate_name|
           required = FORBIDDEN_CALLS[predicate_name]
@@ -43,6 +39,23 @@ module LogicaRb
 
         nil
       end
+
+      def self.validate_ground_annotations!(parsed_rules, capabilities_set:)
+        return nil if capabilities_set.include?(:ground_declarations)
+
+        each_rule_head_predicate_name(parsed_rules) do |predicate_name|
+          next unless predicate_name == "@Ground"
+
+          raise Violation.new(
+            :forbidden_annotation,
+            "Forbidden annotation in untrusted source: @Ground (enable capability :ground_declarations to allow)",
+            predicate_name: "@Ground"
+          )
+        end
+
+        nil
+      end
+      private_class_method :validate_ground_annotations!
 
       def self.normalize_capabilities(value)
         Array(value)
@@ -73,7 +86,22 @@ module LogicaRb
         end
       end
       private_class_method :each_call_predicate_name
+
+      def self.each_rule_head_predicate_name(obj, &block)
+        return enum_for(:each_rule_head_predicate_name, obj) unless block_given?
+
+        case obj
+        when Array
+          obj.each { |v| each_rule_head_predicate_name(v, &block) }
+        when Hash
+          head = obj["head"]
+          if head.is_a?(Hash)
+            predicate_name = head["predicate_name"]
+            yield predicate_name if predicate_name.is_a?(String) && !predicate_name.empty?
+          end
+        end
+      end
+      private_class_method :each_rule_head_predicate_name
     end
   end
 end
-

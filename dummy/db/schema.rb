@@ -15,6 +15,7 @@ ActiveRecord::Schema[8.1].define(version: 2025_12_26_000002) do
     t.datetime "created_at", null: false
     t.string "name", null: false
     t.string "region", null: false
+    t.integer "tenant_id", null: false
     t.datetime "updated_at", null: false
   end
 
@@ -24,6 +25,7 @@ ActiveRecord::Schema[8.1].define(version: 2025_12_26_000002) do
     t.integer "customer_id", null: false
     t.datetime "ordered_at", null: false
     t.string "status", default: "placed", null: false
+    t.integer "tenant_id", null: false
     t.datetime "updated_at", null: false
     t.index ["customer_id"], name: "index_orders_on_customer_id"
     t.index ["ordered_at"], name: "index_orders_on_ordered_at"

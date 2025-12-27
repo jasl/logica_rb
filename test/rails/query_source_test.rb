@@ -37,7 +37,7 @@ class RailsQuerySourceTest < Minitest::Test
         age >= 18;
     LOGICA
 
-    query = LogicaRb::Rails.query(source: source, predicate: "AdultUsers", trusted: false)
+    query = LogicaRb::Rails.query(source: source, predicate: "AdultUsers", trusted: false, allowed_relations: ["users"])
 
     result = query.result
     assert_kind_of ActiveRecord::Result, result

@@ -36,7 +36,7 @@ module LogicaRb
       def result
         sql_text, engine = compiled_query_sql_and_engine
         validate_query_only_sql!(sql_text, engine: engine)
-        @executor.select_all(sql_text)
+        @executor.select_all(sql_text, access_policy: @definition.access_policy)
       end
 
       def records(model:)
@@ -97,7 +97,17 @@ module LogicaRb
 
         return nil if already_validated_query_sql?(sql, engine: engine)
 
-        LogicaRb::SqlSafety::QueryOnlyValidator.validate!(sql, engine: engine)
+        LogicaRb::SqlSafety::QueryOnlyValidator.validate!(sql, engine: engine, forbidden_functions: [])
+        LogicaRb::SqlSafety::ForbiddenFunctionsValidator.validate!(sql, engine: engine)
+
+        policy = @definition.access_policy || LogicaRb::AccessPolicy.untrusted(allowed_relations: [])
+        LogicaRb::SqlSafety::RelationAccessValidator.validate!(
+          sql,
+          engine: engine,
+          allowed_relations: policy.allowed_relations,
+          allowed_schemas: policy.allowed_schemas,
+          denied_schemas: policy.effective_denied_schemas(engine: engine)
+        )
         @validated_query_sql = sql
         @validated_query_engine = engine.to_s
       end

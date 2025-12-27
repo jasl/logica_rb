@@ -9,8 +9,16 @@ module LogicaRb
         @connection = connection
       end
 
-      def select_all(sql)
-        @connection.select_all(sql)
+      def select_all(sql, access_policy: nil)
+        raw = @connection.respond_to?(:raw_connection) ? @connection.raw_connection : nil
+
+        if defined?(::SQLite3::Database) && raw.is_a?(::SQLite3::Database) && access_policy&.trust == :untrusted
+          LogicaRb::SqliteSafety::Authorizer.with_untrusted_policy(raw, access_policy) do
+            @connection.select_all(sql)
+          end
+        else
+          @connection.select_all(sql)
+        end
       end
 
       def exec_query(sql, name: DEFAULT_QUERY_NAME, binds: [], prepare: false)

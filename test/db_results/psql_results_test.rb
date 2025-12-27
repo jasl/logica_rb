@@ -60,13 +60,142 @@ class PsqlDbResultsTest < Minitest::Test
     sql.to_s.lstrip.start_with?("SELECT", "WITH", "VALUES")
   end
 
+  def split_psql_statements(sql)
+    s = sql.to_s
+    return [] if s.strip.empty?
+
+    statements = []
+    start_idx = 0
+
+    in_single_quote = false
+    dollar_delim = nil
+    in_line_comment = false
+    block_comment_depth = 0
+
+    i = 0
+    while i < s.bytesize
+      b = s.getbyte(i)
+      nb = s.getbyte(i + 1)
+
+      if in_line_comment
+        in_line_comment = false if b == 10 # "\n"
+        i += 1
+        next
+      end
+
+      if block_comment_depth.positive?
+        if b == 47 && nb == 42 # "/*"
+          block_comment_depth += 1
+          i += 2
+          next
+        end
+        if b == 42 && nb == 47 # "*/"
+          block_comment_depth -= 1
+          i += 2
+          next
+        end
+        i += 1
+        next
+      end
+
+      if dollar_delim
+        if s.byteslice(i, dollar_delim.bytesize) == dollar_delim
+          i += dollar_delim.bytesize
+          dollar_delim = nil
+          next
+        end
+        i += 1
+        next
+      end
+
+      if in_single_quote
+        if b == 39 # "'"
+          if nb == 39 # "''"
+            i += 2
+          else
+            in_single_quote = false
+            i += 1
+          end
+          next
+        end
+        i += 1
+        next
+      end
+
+      if b == 45 && nb == 45 # "--"
+        in_line_comment = true
+        i += 2
+        next
+      end
+
+      if b == 47 && nb == 42 # "/*"
+        block_comment_depth = 1
+        i += 2
+        next
+      end
+
+      if b == 39 # "'"
+        in_single_quote = true
+        i += 1
+        next
+      end
+
+      if b == 36 # "$"
+        tag_end = i + 1
+        while tag_end < s.bytesize
+          c = s.getbyte(tag_end)
+          break if c == 36
+          break unless (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95
+
+          tag_end += 1
+        end
+
+        if tag_end < s.bytesize && s.getbyte(tag_end) == 36
+          dollar_delim = s.byteslice(i, tag_end - i + 1)
+          i = tag_end + 1
+          next
+        end
+      end
+
+      if b == 59 # ";"
+        stmt = s.byteslice(start_idx, i - start_idx).to_s.strip
+        statements << stmt unless stmt.empty?
+        start_idx = i + 1
+        i += 1
+        next
+      end
+
+      i += 1
+    end
+
+    tail = s.byteslice(start_idx, s.bytesize - start_idx).to_s.strip
+    statements << tail unless tail.empty?
+
+    statements
+  end
+
   def materialize_output_table!(adapter, node_name, node_sql)
-    return unless query_sql?(node_sql)
-
     ident = identifier_sql(node_name)
-    query = node_sql.to_s.strip.sub(/;\s*\z/, "")
+    sql = node_sql.to_s
 
+    if query_sql?(sql)
+      query = sql.strip.sub(/;\s*\z/, "")
+      adapter.exec_script("CREATE TEMP TABLE #{ident} AS #{query};")
+      return
+    end
+
+    parts = split_psql_statements(sql)
+    return if parts.empty?
+    return unless query_sql?(parts.last)
+
+    parts[0...-1].each do |stmt|
+      next if stmt.strip.empty?
+      adapter.exec_script(stmt.rstrip + ";")
+    end
+
+    query = parts.last.strip.sub(/;\s*\z/, "")
     adapter.exec_script("CREATE TEMP TABLE #{ident} AS #{query};")
+    nil
   end
 
   def test_psql_db_results

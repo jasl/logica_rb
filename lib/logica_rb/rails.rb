@@ -31,7 +31,8 @@ module LogicaRb
       default_engine: nil,
       allowed_import_prefixes: nil,
       capabilities: [],
-      library_profile: :safe
+      library_profile: :safe,
+      access_policy: LogicaRb::AccessPolicy.untrusted(allowed_relations: [])
     )
 
     @configuration = DEFAULT_CONFIGURATION
@@ -48,6 +49,7 @@ module LogicaRb
       options.allowed_import_prefixes = cfg.allowed_import_prefixes
       options.capabilities = cfg.capabilities
       options.library_profile = cfg.library_profile
+      options.access_policy = cfg.access_policy
 
       yield options if block_given?
 
@@ -58,7 +60,8 @@ module LogicaRb
         default_engine: options.default_engine&.to_s,
         allowed_import_prefixes: normalize_allowed_import_prefixes(options.allowed_import_prefixes),
         capabilities: options.capabilities.nil? ? cfg.capabilities : normalize_capabilities(options.capabilities),
-        library_profile: normalize_library_profile(options.library_profile || cfg.library_profile || :safe)
+        library_profile: normalize_library_profile(options.library_profile || cfg.library_profile || :safe),
+        access_policy: options.access_policy.nil? ? cfg.access_policy : normalize_access_policy(options.access_policy)
       )
 
       clear_cache!
@@ -85,6 +88,7 @@ module LogicaRb
       allowed_import_prefixes = app_cfg.respond_to?(:allowed_import_prefixes) ? app_cfg.allowed_import_prefixes : nil
       capabilities = app_cfg.respond_to?(:capabilities) ? app_cfg.capabilities : nil
       library_profile = app_cfg.respond_to?(:library_profile) ? app_cfg.library_profile : nil
+      access_policy = app_cfg.respond_to?(:access_policy) ? app_cfg.access_policy : nil
 
       Configuration.new(
         import_root: import_root.nil? ? base.import_root : import_root,
@@ -93,7 +97,8 @@ module LogicaRb
         default_engine: default_engine.nil? ? base.default_engine : default_engine&.to_s,
         allowed_import_prefixes: allowed_import_prefixes.nil? ? base.allowed_import_prefixes : normalize_allowed_import_prefixes(allowed_import_prefixes),
         capabilities: capabilities.nil? ? base.capabilities : normalize_capabilities(capabilities),
-        library_profile: library_profile.nil? ? base.library_profile : normalize_library_profile(library_profile)
+        library_profile: library_profile.nil? ? base.library_profile : normalize_library_profile(library_profile),
+        access_policy: access_policy.nil? ? base.access_policy : normalize_access_policy(access_policy)
       )
     end
 
@@ -118,6 +123,18 @@ module LogicaRb
       return profile if %i[safe full].include?(profile)
 
       raise ArgumentError, "Unknown library_profile: #{value.inspect} (expected :safe or :full)"
+    end
+
+    def self.normalize_access_policy(value)
+      return nil if value.nil?
+      return value if value.is_a?(LogicaRb::AccessPolicy)
+
+      unless value.is_a?(Hash)
+        raise ArgumentError, "access_policy must be a LogicaRb::AccessPolicy or Hash, got: #{value.class}"
+      end
+
+      normalized = value.each_with_object({}) { |(k, v), h| h[k.to_sym] = v }
+      LogicaRb::AccessPolicy.new(**normalized)
     end
 
     def self.cache
@@ -154,7 +171,13 @@ module LogicaRb
       allow_imports: nil,
       as: nil,
       capabilities: nil,
-      library_profile: nil
+      library_profile: nil,
+      access_policy: nil,
+      allowed_relations: nil,
+      allowed_schemas: nil,
+      denied_schemas: nil,
+      tenant: nil,
+      timeouts: nil
     )
       connection ||= defined?(::ActiveRecord::Base) ? ::ActiveRecord::Base.connection : nil
       unless connection
@@ -177,7 +200,13 @@ module LogicaRb
         trusted: trusted,
         allow_imports: allow_imports,
         capabilities: capabilities,
-        library_profile: library_profile
+        library_profile: library_profile,
+        access_policy: access_policy,
+        allowed_relations: allowed_relations,
+        allowed_schemas: allowed_schemas,
+        denied_schemas: denied_schemas,
+        tenant: tenant,
+        timeouts: timeouts
       )
 
       cfg = configuration
