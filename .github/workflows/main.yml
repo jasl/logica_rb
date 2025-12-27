@@ -51,3 +51,9 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
         run: bundle exec rake test:rails_psql
+      - name: Run DB smoke tests (SQLite)
+        run: bundle exec rake test:db_smoke_sqlite
+      - name: Run DB smoke tests (Postgres)
+        env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+        run: bundle exec rake test:db_smoke_psql

@@ -40,7 +40,7 @@ class CustomQueriesController < ApplicationController
           engine: "auto",
           trusted: false,
           allow_imports: @allow_imports,
-          flags_schema: {},
+          flags_schema: nil,
           default_flags: parse_json_hash!(@flags_json)
         )
 

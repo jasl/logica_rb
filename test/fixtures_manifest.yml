@@ -23,11 +23,13 @@ tests:
     golden: integration_tests/rec_cycle_test.txt
     predicate: Test
     runner: default
+    db_results: true
   - name: rec_small_cycle_test
     src: integration_tests/rec_small_cycle_test.l
     golden: integration_tests/rec_small_cycle_test.txt
     predicate: Test
     runner: default
+    db_results: true
   - name: sqlite_array_sub_test
     src: integration_tests/sqlite_array_sub_test.l
     golden: integration_tests/sqlite_array_sub_test.txt
@@ -139,6 +141,7 @@ tests:
     golden: integration_tests/sqlite_rec_functor.txt
     predicate: Test
     runner: default
+    db_results: true
   - name: sqlite_record_assembler
     src: integration_tests/sqlite_record_assembler.l
     golden: integration_tests/sqlite_record_assembler.txt
@@ -173,6 +176,7 @@ tests:
     golden: integration_tests/sqlite_test.txt
     predicate: Test
     runner: default
+    db_results: true
   - name: sqlite_unwrapping_test
     src: integration_tests/sqlite_unwrapping_test.l
     golden: integration_tests/sqlite_unwrapping_test.txt
@@ -189,11 +193,13 @@ tests:
     golden: integration_tests/ultra_short_cycle_test.txt
     predicate: Test
     runner: default
+    db_results: true
   - name: unification_priority_test
     src: integration_tests/unification_priority_test.l
     golden: integration_tests/unification_priority_test.txt
     predicate: Test
     runner: default
+    db_results: true
   psql:
   - name: canada_psql_test
     src: integration_tests/import_tests/canada_psql_test.l
@@ -206,21 +212,25 @@ tests:
     golden: integration_tests/psql_arg_min_max_k_test.txt
     predicate: Test
     runner: default
+    db_results: true
   - name: psql_arg_min_test
     src: integration_tests/psql_arg_min_test.l
     golden: integration_tests/psql_arg_min_test.txt
     predicate: Test
     runner: default
+    db_results: true
   - name: psql_argmax2_combine_test
     src: integration_tests/psql_argmax2_combine_test.l
     golden: integration_tests/psql_argmax2_combine_test.txt
     predicate: Test
     runner: default
+    db_results: true
   - name: psql_argmin_list_test
     src: integration_tests/psql_argmin_list_test.l
     golden: integration_tests/psql_argmin_list_test.txt
     predicate: Test
     runner: default
+    db_results: true
   - name: psql_combine2_test
     src: integration_tests/psql_combine2_test.l
     golden: integration_tests/psql_combine2_test.txt
@@ -315,6 +325,7 @@ tests:
     golden: integration_tests/psql_test.txt
     predicate: Test
     runner: default
+    db_results: true
   - name: psql_udf_test
     src: integration_tests/psql_udf_test.l
     golden: integration_tests/psql_udf_test.txt
@@ -325,6 +336,7 @@ tests:
     golden: integration_tests/psql_win_move_test.txt
     predicate: Test
     runner: default
+    db_results: true
   - name: psqld_empty_list_type_test
     src: integration_tests/psqld_empty_list_type_test.l
     golden: integration_tests/psqld_empty_list_type_test.txt

@@ -79,6 +79,8 @@ class SqliteDbResultsTest < Minitest::Test
       name = entry.fetch("name")
       compilation = compile_case(entry)
       plan_hash = JSON.parse(compilation.plan_json(pretty: true))
+      outputs = plan_hash.fetch("outputs")
+      assert_equal 1, outputs.size, "db_results expects exactly 1 output for #{name}"
 
       golden_text = File.binread(File.join(FIXTURES_ROOT, entry.fetch("golden")))
       expected = ResultTableParser.parse(golden_text)
@@ -87,7 +89,7 @@ class SqliteDbResultsTest < Minitest::Test
       begin
         LogicaRb::DbSmoke::ReferencePlanExecutor.execute!(adapter, plan_hash)
 
-        plan_hash.fetch("outputs").each do |out|
+        outputs.each do |out|
           node_name = out.fetch("node")
           node = plan_hash.fetch("config").find { |n| n["name"] == node_name }
           raise "missing output node in config: #{node_name}" if node.nil?
