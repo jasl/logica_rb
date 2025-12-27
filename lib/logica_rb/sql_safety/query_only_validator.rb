@@ -21,9 +21,10 @@ module LogicaRb
         %w[
           pg_read_file pg_read_binary_file pg_ls_dir pg_stat_file
           lo_import lo_export
-          dblink_connect
+          pg_sleep pg_sleep_for pg_sleep_until
+          pg_cancel_backend pg_terminate_backend pg_reload_conf
+          dblink dblink_connect dblink_connect_u
           set_config
-          pg_sleep
         ]
       ).freeze
 

@@ -101,6 +101,69 @@ class RelationAccessValidatorTest < Minitest::Test
     assert_match(/secret\.orders/i, err.message)
   end
 
+  def test_psql_rejects_unqualified_pg_relations_even_if_public_schema_allowed
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        validate!(
+          "SELECT * FROM pg_class",
+          engine: "psql",
+          allowed_schemas: ["public"]
+        )
+      end
+
+    assert_equal :relation_not_allowed, err.reason
+    assert_match(/pg_class/i, err.message)
+    assert_match(/pg_catalog/i, err.message)
+  end
+
+  def test_psql_rejects_quoted_unqualified_pg_relations
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        validate!(
+          "SELECT * FROM \"pg_class\"",
+          engine: "psql",
+          allowed_schemas: ["public"]
+        )
+      end
+
+    assert_equal :relation_not_allowed, err.reason
+    assert_match(/pg_class/i, err.message)
+    assert_match(/pg_catalog/i, err.message)
+  end
+
+  def test_psql_schema_qualified_pg_relation_follows_normal_allowlist_logic
+    validate!(
+      "SELECT * FROM public.pg_class",
+      engine: "psql",
+      allowed_relations: ["public.pg_class"]
+    )
+
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        validate!(
+          "SELECT * FROM public.pg_class",
+          engine: "psql",
+          allowed_relations: ["bi.orders"]
+        )
+      end
+    assert_equal :relation_not_allowed, err.reason
+    assert_match(/public\.pg_class/i, err.message)
+  end
+
+  def test_psql_pg_relation_rule_does_not_trigger_on_strings_or_comments
+    validate!(
+      "SELECT 'pg_class' AS s FROM bi.orders",
+      engine: "psql",
+      allowed_relations: ["bi.orders"]
+    )
+
+    validate!(
+      "SELECT * FROM bi.orders -- pg_class\n",
+      engine: "psql",
+      allowed_relations: ["bi.orders"]
+    )
+  end
+
   def test_handles_quotes_aliases_and_joins
     validate!(
       <<~SQL,

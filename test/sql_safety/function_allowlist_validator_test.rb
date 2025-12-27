@@ -122,17 +122,32 @@ class FunctionAllowlistValidatorTest < Minitest::Test
     used = validate!(%(SELECT "sum"(x) FROM t), engine: "sqlite", allowed_functions: minimal)
     assert_equal Set.new(["sum"]), used
 
+    forbidden_psql = LogicaRb::SqlSafety::QueryOnlyValidator.forbidden_functions_for_engine("psql")
+
     err =
       assert_raises(LogicaRb::SqlSafety::Violation) do
         validate!(
           %(SELECT "pg_read_file"('/etc/passwd')),
           engine: "psql",
           allowed_functions: Set.new(["pg_read_file"]),
-          forbidden_functions: LogicaRb::SqlSafety::QueryOnlyValidator.forbidden_functions_for_engine("psql")
+          forbidden_functions: forbidden_psql
         )
       end
 
     assert_equal :forbidden_function, err.reason
     assert_equal "pg_read_file", err.details
+
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        validate!(
+          %(SELECT pg_cancel_backend(123)),
+          engine: "psql",
+          allowed_functions: Set.new(["pg_cancel_backend"]),
+          forbidden_functions: forbidden_psql
+        )
+      end
+
+    assert_equal :forbidden_function, err.reason
+    assert_equal "pg_cancel_backend", err.details
   end
 end

@@ -77,6 +77,30 @@ class QueryOnlyValidatorTest < Minitest::Test
     end
   end
 
+  def test_rejects_additional_admin_and_dos_functions_psql
+    %w[
+      pg_sleep_for pg_sleep_until
+      pg_cancel_backend pg_terminate_backend pg_reload_conf
+      dblink dblink_connect_u
+    ].each do |func|
+      assert_raises(LogicaRb::SqlSafety::Violation, "expected #{func} to be rejected") do
+        LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT #{func}()", engine: "psql")
+      end
+    end
+
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT pg_catalog.pg_sleep_for('1 second')", engine: "psql")
+      end
+    assert_equal :forbidden_function, err.reason
+
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        LogicaRb::SqlSafety::QueryOnlyValidator.validate!(%(SELECT "pg_reload_conf"()), engine: "psql")
+      end
+    assert_equal :forbidden_function, err.reason
+  end
+
   def test_rejects_quoted_dangerous_functions
     err =
       assert_raises(LogicaRb::SqlSafety::Violation) do
@@ -117,6 +141,11 @@ class QueryOnlyValidatorTest < Minitest::Test
 
     LogicaRb::SqlSafety::QueryOnlyValidator.validate!(
       "SELECT 'pg_read_file(/etc/passwd)' AS msg\n",
+      engine: "psql"
+    )
+
+    LogicaRb::SqlSafety::QueryOnlyValidator.validate!(
+      "SELECT 'pg_reload_conf()' AS msg\n",
       engine: "psql"
     )
 

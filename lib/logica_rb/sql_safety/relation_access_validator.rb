@@ -124,6 +124,17 @@ module LogicaRb
           return idx
         end
 
+        if engine == "psql" && schema.nil? && table.start_with?("pg_")
+          raise LogicaRb::SqlSafety::Violation.new(
+            :relation_not_allowed,
+            "SQL relation access is not allowed: #{table}. " \
+            "PostgreSQL always searches pg_catalog via search_path, so an unqualified pg_* name may resolve to a system " \
+            "catalog relation (e.g. pg_catalog.#{table}). " \
+            "Fix: use an explicit schema-qualified relation (e.g. public.#{table}) and allow it explicitly, " \
+            "or rename the table."
+          )
+        end
+
         effective_schema = (schema || default_schema).to_s
         relations_used.add("#{effective_schema.downcase}.#{table.downcase}")
 

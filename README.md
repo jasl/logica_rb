@@ -213,9 +213,26 @@ Rake tasks are file-based; `source:` is intended for runtime inputs and is not s
 - query-only: `format` must be `:query` unless `trusted: true`
 - imports disabled: `allow_imports` defaults to `false` unless `trusted: true` (or `allow_imports: true` explicitly)
 - query-only validation raises `LogicaRb::SqlSafety::Violation`
-- function allowlist (untrusted `source:`): by default only a Rails-minimal set of SQL functions is permitted (`:rails_minimal_plus`)
-  - `count`, `sum`, `avg`, `min`, `max`
-  - plus: `cast`, `coalesce`, `nullif`
+
+#### BI / Untrusted Quickstart (copy-paste)
+
+```ruby
+src = <<~LOGICA
+  @Engine("psql");
+  Report(id:) :- customers(id:);
+LOGICA
+
+policy = LogicaRb::AccessPolicy.untrusted(
+  allowed_relations: ["customers", "orders"] # or "public.customers"/"public.orders" (recommended for Postgres)
+)
+
+q = LogicaRb::Rails.query(source: src, predicate: "Report", trusted: false, access_policy: policy)
+q.result
+```
+
+- Default untrusted `allowed_functions` profile: `:rails_minimal_plus` (`count`, `sum`, `avg`, `min`, `max`, plus `cast`, `coalesce`, `nullif`).
+- Switch to stricter `:rails_minimal`: set `LogicaRb::Rails.configure { |c| c.untrusted_function_profile = :rails_minimal }` (or build the policy with `function_profile: :rails_minimal`).
+- Extend the allowlist explicitly per query (example: `lower`, `upper`, `strftime`, `date_trunc` must be opted in; see below).
 
 Operational safety suggestions for runtime-provided source:
 
@@ -241,13 +258,19 @@ require "set"
 
 base = LogicaRb::AccessPolicy.untrusted(allowed_relations: ["events"])
 allowed = base.resolved_allowed_functions(engine: "psql") || Set.new
-policy = base.with(allowed_functions: allowed | Set["date_trunc"])
+policy = base.with(allowed_functions: allowed | Set["lower", "upper", "date_trunc"])
 
 q = LogicaRb::Rails.query(source: src, predicate: "Report", trusted: false, access_policy: policy)
 q.result
 ```
 
 Dangerous functions are always forbidden (denylist wins), even if misconfigured into an allowlist (e.g. SQLite `load_extension`, Postgres `pg_read_file`, `lo_import`, `dblink_connect`, ...).
+
+#### PostgreSQL pg_catalog/search_path 注意事项
+
+- `pg_catalog` is always searched via `search_path` in PostgreSQL.
+- Unqualified `pg_*` relation names can resolve to system catalogs (e.g. `pg_class` -> `pg_catalog.pg_class`).
+- For untrusted validation, LogicaRb rejects unqualified `pg_*` relations. Fix: explicitly schema-qualify (e.g. `public.pg_class`) and allow it explicitly, or rename the table.
 
 Plan docs:
 - `docs/PLAN_SCHEMA.md`
