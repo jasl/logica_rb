@@ -24,24 +24,41 @@ module LogicaRb
         [().]                      # punctuation
       /x.freeze
 
-      def self.validate!(sql, engine: nil, allowed_functions: nil)
+      def self.validate!(sql, engine:, allowed_functions:, forbidden_functions: nil)
         sql = sql.to_s
         engine = engine.to_s
         engine = nil if engine.empty?
 
-        allowed_functions ||= LogicaRb::AccessPolicy.default_allowed_functions(engine)
-        allowlist = normalize_allowlist(allowed_functions)
+        allowlist = allowed_functions.nil? ? nil : normalize_allowlist(allowed_functions)
 
         cleaned = LogicaRb::SqlSafety::QueryOnlyValidator.strip_comments_and_strings(sql)
-        used = scan_functions_from_cleaned(cleaned)
+        calls = scan_function_calls_from_cleaned(cleaned)
+        used = calls.map { |call| call.fetch(:unqualified) }.to_set
 
-        used.each do |func|
-          next if allowlist.include?(func)
+        if forbidden_functions
+          forbidden_set = LogicaRb::SqlSafety::QueryOnlyValidator.normalize_forbidden_functions(forbidden_functions)
+          forbidden_hit = calls.find { |call| forbidden_set.include?(call.fetch(:unqualified)) }
+          if forbidden_hit
+            hit = forbidden_hit.fetch(:unqualified)
+            raise LogicaRb::SqlSafety::Violation.new(:forbidden_function, "Disallowed SQL function: #{hit}", details: hit)
+          end
+        end
+
+        return used if allowlist.nil?
+
+        calls.each do |call|
+          qualified = call.fetch(:qualified)
+          unqualified = call.fetch(:unqualified)
+          next if allowlist.include?(unqualified) || allowlist.include?(qualified)
 
           raise LogicaRb::SqlSafety::Violation.new(
             :function_not_allowed,
-            "SQL function is not allowed: #{func}",
-            details: func
+            "SQL function is not allowed: #{unqualified}",
+            details: {
+              function: unqualified,
+              allowed: allowlist.to_a.sort,
+              profile: infer_profile_from_allowlist(allowlist),
+            }
           )
         end
 
@@ -54,29 +71,45 @@ module LogicaRb
       end
 
       def self.scan_functions_from_cleaned(cleaned_sql)
+        calls = scan_function_calls_from_cleaned(cleaned_sql)
+        seen = {}
+        calls.each_with_object([]) do |call, result|
+          name = call.fetch(:unqualified)
+          next if seen[name]
+
+          seen[name] = true
+          result << name
+        end
+      end
+      private_class_method :scan_functions_from_cleaned
+
+      def self.scan_function_calls_from_cleaned(cleaned_sql)
         tokens = cleaned_sql.to_s.scan(TOKEN_REGEX)
 
-        used = []
+        calls = []
         seen = {}
 
         tokens.each_index do |idx|
           next unless tokens[idx + 1] == "("
 
-          func = normalize_qualified_identifier(tokens, idx)
-          next if func.nil?
-          next if !func.include?(".") && NON_FUNCTION_PAREN_KEYWORDS.include?(func)
-          next if seen[func]
+          qualified = normalize_qualified_identifier(tokens, idx)
+          next if qualified.nil?
+          next if !qualified.include?(".") && NON_FUNCTION_PAREN_KEYWORDS.include?(qualified)
+          next if seen[qualified]
 
-          seen[func] = true
-          used << func
+          unqualified = qualified.split(".").last
+          seen[qualified] = true
+          calls << { qualified: qualified, unqualified: unqualified }
         end
 
-        used
+        calls
       end
-      private_class_method :scan_functions_from_cleaned
+      private_class_method :scan_function_calls_from_cleaned
 
       def self.normalize_allowlist(value)
-        Array(value)
+        list = value.is_a?(Set) ? value.to_a : Array(value)
+
+        list
           .compact
           .map { |v| normalize_qualified_identifier_string(v) }
           .compact
@@ -147,6 +180,17 @@ module LogicaRb
         normalize_identifier_token(tok)
       end
       private_class_method :normalize_identifier_text
+
+      def self.infer_profile_from_allowlist(allowlist)
+        minimal = LogicaRb::AccessPolicy::RAILS_MINIMAL_ALLOWED_FUNCTIONS
+        minimal_plus = LogicaRb::AccessPolicy::RAILS_MINIMAL_PLUS_ALLOWED_FUNCTIONS
+
+        return :rails_minimal if allowlist == minimal
+        return :rails_minimal_plus if allowlist == minimal_plus
+
+        :custom
+      end
+      private_class_method :infer_profile_from_allowlist
     end
   end
 end

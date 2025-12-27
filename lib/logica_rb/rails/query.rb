@@ -36,7 +36,7 @@ module LogicaRb
         enforce_source_policy!(format: format)
         compilation = compile
         sql_text = compilation.sql(format)
-        validate_query_only_sql!(sql_text, engine: compilation.engine) if format == :query
+        validate_query_only_sql!(sql_text, engine: compilation.engine, compilation: compilation) if format == :query
         sql_text
       end
 
@@ -46,8 +46,8 @@ module LogicaRb
       end
 
       def result
-        sql_text, engine = compiled_query_sql_and_engine
-        validate_query_only_sql!(sql_text, engine: engine)
+        sql_text, engine, compilation = compiled_query_sql_and_engine
+        validate_query_only_sql!(sql_text, engine: engine, compilation: compilation)
         @executor.select_all(sql_text, access_policy: @definition.access_policy)
       end
 
@@ -56,8 +56,8 @@ module LogicaRb
       end
 
       def relation(model:, as: nil)
-        sql_text, engine = compiled_query_sql_and_engine
-        validate_query_only_sql!(sql_text, engine: engine)
+        sql_text, engine, compilation = compiled_query_sql_and_engine
+        validate_query_only_sql!(sql_text, engine: engine, compilation: compilation)
 
         alias_name = (as || @definition.as || default_alias_name).to_s
 
@@ -100,26 +100,34 @@ module LogicaRb
       def compiled_query_sql_and_engine
         enforce_source_policy!(format: :query)
         compilation = compile
-        [compilation.sql(:query), compilation.engine]
+        [compilation.sql(:query), compilation.engine, compilation]
       end
 
-      def validate_query_only_sql!(sql, engine:)
+      def validate_query_only_sql!(sql, engine:, compilation: nil)
         return nil unless @definition.source
         return nil if @definition.trusted
 
         return nil if already_validated_query_sql?(sql, engine: engine)
 
         LogicaRb::SqlSafety::QueryOnlyValidator.validate!(sql, engine: engine, forbidden_functions: [])
+        LogicaRb::SqlSafety::ForbiddenFunctionsValidator.validate!(sql, engine: engine)
 
         policy = @definition.access_policy || LogicaRb::AccessPolicy.untrusted(allowed_relations: [])
-        @validated_functions_used =
+        allowed = policy.resolved_allowed_functions(engine: engine)
+
+        functions_used =
           LogicaRb::SqlSafety::FunctionAllowlistValidator.validate!(
             sql,
             engine: engine,
-            allowed_functions: policy.effective_allowed_functions(engine: engine)
+            allowed_functions: allowed
           )
 
-        LogicaRb::SqlSafety::ForbiddenFunctionsValidator.validate!(sql, engine: engine)
+        functions_used_sorted = functions_used.to_a.sort
+        @validated_functions_used = functions_used_sorted
+
+        compilation ||= compile
+        compilation.analysis&.[]=("functions_used", functions_used_sorted)
+
         @validated_relations_used =
           LogicaRb::SqlSafety::RelationAccessValidator.validate!(
           sql,

@@ -8,6 +8,7 @@ module LogicaRb
     :trust,
     :capabilities,
     :allowed_relations,
+    :function_profile,
     :allowed_functions,
     :allowed_schemas,
     :denied_schemas,
@@ -19,6 +20,7 @@ module LogicaRb
       trust: nil,
       capabilities: nil,
       allowed_relations: nil,
+      function_profile: nil,
       allowed_functions: nil,
       allowed_schemas: nil,
       denied_schemas: nil,
@@ -27,6 +29,7 @@ module LogicaRb
     )
       engine = normalize_optional_string(engine)
       trust = normalize_optional_symbol(trust)
+      function_profile = normalize_optional_symbol(function_profile)
 
       normalized_capabilities =
         if capabilities.nil?
@@ -45,6 +48,7 @@ module LogicaRb
         trust: trust,
         capabilities: normalized_capabilities,
         allowed_relations: allowed_relations,
+        function_profile: function_profile,
         allowed_functions: allowed_functions,
         allowed_schemas: allowed_schemas,
         denied_schemas: denied_schemas,
@@ -63,24 +67,31 @@ module LogicaRb
 
     def cache_key_data(engine: nil)
       resolved_engine = (engine.nil? ? self.engine : normalize_optional_string(engine)).to_s
+      resolved_function_profile = resolved_function_profile()
+
+      resolved_allowed_functions = resolved_allowed_functions(engine: resolved_engine)
+      allowed_functions_key = resolved_allowed_functions.nil? ? nil : resolved_allowed_functions.map(&:to_s).sort
 
       {
         engine: resolved_engine,
         trust: trust&.to_s,
         capabilities: effective_capabilities.map(&:to_s).sort,
         allowed_relations: Array(allowed_relations).map(&:to_s).sort,
-        allowed_functions: effective_allowed_functions(engine: resolved_engine).map(&:to_s).sort,
+        function_profile: resolved_function_profile&.to_s,
+        allowed_functions: allowed_functions_key,
         allowed_schemas: Array(allowed_schemas).map(&:to_s).sort,
         denied_schemas: effective_denied_schemas(engine: resolved_engine).map(&:to_s).sort,
       }
     end
 
-    def self.trusted(engine: nil, **kwargs)
-      new(**kwargs.merge(engine: engine, trust: :trusted))
+    def self.trusted(engine: nil, function_profile: nil, **kwargs)
+      function_profile = :none if function_profile.nil?
+      new(**kwargs.merge(engine: engine, trust: :trusted, function_profile: function_profile))
     end
 
-    def self.untrusted(engine: nil, **kwargs)
-      base = { engine: engine, trust: :untrusted }
+    def self.untrusted(engine: nil, function_profile: nil, **kwargs)
+      function_profile = :rails_minimal_plus if function_profile.nil?
+      base = { engine: engine, trust: :untrusted, function_profile: function_profile }
       new(**base.merge(kwargs))
     end
 
@@ -90,28 +101,29 @@ module LogicaRb
       self.class.default_denied_schemas(engine || self.engine)
     end
 
-    def effective_allowed_functions(engine: nil)
+    def resolved_allowed_functions(engine: nil)
       resolved_engine = normalize_optional_string(engine) || self.engine
 
-      return self.class.default_allowed_functions(resolved_engine) if allowed_functions.nil?
-
-      resolved_engine = resolved_engine.to_s.strip.downcase
-
-      if allowed_functions.key?(resolved_engine)
-        return allowed_functions.fetch(resolved_engine)
+      if !allowed_functions.nil?
+        return resolve_allowed_functions_override(allowed_functions, engine: resolved_engine)
       end
 
-      if allowed_functions.key?("*")
-        return allowed_functions.fetch("*")
+      case resolved_function_profile()
+      when :rails_minimal
+        LogicaRb::AccessPolicy::RAILS_MINIMAL_ALLOWED_FUNCTIONS
+      when :rails_minimal_plus
+        LogicaRb::AccessPolicy::RAILS_MINIMAL_PLUS_ALLOWED_FUNCTIONS
+      when :none, nil
+        nil
+      when :custom
+        raise ArgumentError, "function_profile is :custom but allowed_functions is not set"
+      else
+        raise ArgumentError, "Unknown function_profile: #{function_profile.inspect}"
       end
+    end
 
-      if allowed_functions.key?("all")
-        return allowed_functions.fetch("all")
-      end
-
-      return allowed_functions.values.first if allowed_functions.length == 1
-
-      self.class.default_allowed_functions(resolved_engine)
+    def effective_allowed_functions(engine: nil)
+      resolved_allowed_functions(engine: engine)
     end
 
     def effective_capabilities
@@ -131,39 +143,9 @@ module LogicaRb
       end
     end
 
-    SQLITE_DEFAULT_ALLOWED_FUNCTIONS = Set.new(
-      %w[
-        argmin argmax fingerprint assemblerecord disassemblerecord
-        char
-        distinctlistagg sortlist in_list join_strings magicalentangle printf
-        json_extract json_group_array json_array_length json_each json_tree json_array
-        date julianday
-        cast coalesce
-        count sum min max avg group_concat
-      ]
-    ).freeze
-
-    PSQL_DEFAULT_ALLOWED_FUNCTIONS = Set.new(
-      %w[
-        unnest
-        md5 substr row_to_json chr
-        generate_series array_agg array_length string_to_array
-        ln
-        least greatest
-        cast coalesce
-        count sum min max avg
-      ]
-    ).freeze
-
     def self.default_allowed_functions(engine)
-      case engine.to_s
-      when "sqlite"
-        SQLITE_DEFAULT_ALLOWED_FUNCTIONS.to_a.sort
-      when "psql"
-        PSQL_DEFAULT_ALLOWED_FUNCTIONS.to_a.sort
-      else
-        (SQLITE_DEFAULT_ALLOWED_FUNCTIONS | PSQL_DEFAULT_ALLOWED_FUNCTIONS).to_a.sort
-      end
+      # Legacy helper; prefer `resolved_allowed_functions` with a function_profile.
+      LogicaRb::AccessPolicy::RAILS_MINIMAL_PLUS_ALLOWED_FUNCTIONS.to_a.sort
     end
 
     def self.normalize_capabilities(value)
@@ -235,11 +217,57 @@ module LogicaRb
           key = key.strip.downcase
 
           list = normalize_identifier_list(v) || []
-          h[key] = list
+          h[key] = list.to_set
         end
       else
-        { "*" => (normalize_identifier_list(value) || []) }
+        (normalize_identifier_list(value) || []).to_set
       end
     end
+
+    def resolved_function_profile
+      return function_profile if !function_profile.nil?
+
+      case trust
+      when :untrusted
+        :rails_minimal_plus
+      when :trusted, nil
+        :none
+      else
+        :none
+      end
+    end
+    private :resolved_function_profile
+
+    def resolve_allowed_functions_override(value, engine: nil)
+      resolved_engine = normalize_optional_string(engine) || self.engine
+      resolved_engine = resolved_engine.to_s.strip.downcase
+
+      if value.is_a?(Hash)
+        if value.key?(resolved_engine)
+          return value.fetch(resolved_engine)
+        end
+
+        if value.key?("*")
+          return value.fetch("*")
+        end
+
+        if value.key?("all")
+          return value.fetch("all")
+        end
+
+        return value.values.first if value.length == 1
+
+        return Set.new if resolved_engine.empty?
+
+        return Set.new
+      end
+
+      value.to_set
+    end
+    private :resolve_allowed_functions_override
   end
+
+  AccessPolicy::RAILS_MINIMAL_ALLOWED_FUNCTIONS = Set.new(%w[count sum avg min max]).freeze
+  AccessPolicy::RAILS_MINIMAL_PLUS_ALLOWED_FUNCTIONS =
+    (AccessPolicy::RAILS_MINIMAL_ALLOWED_FUNCTIONS | Set.new(%w[cast coalesce nullif])).freeze
 end

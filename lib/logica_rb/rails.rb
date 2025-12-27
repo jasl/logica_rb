@@ -32,6 +32,7 @@ module LogicaRb
       allowed_import_prefixes: nil,
       capabilities: [],
       library_profile: :safe,
+      untrusted_function_profile: :rails_minimal_plus,
       access_policy: LogicaRb::AccessPolicy.untrusted(allowed_relations: [])
     )
 
@@ -49,6 +50,7 @@ module LogicaRb
       options.allowed_import_prefixes = cfg.allowed_import_prefixes
       options.capabilities = cfg.capabilities
       options.library_profile = cfg.library_profile
+      options.untrusted_function_profile = cfg.untrusted_function_profile
       options.access_policy = cfg.access_policy
 
       yield options if block_given?
@@ -61,6 +63,7 @@ module LogicaRb
         allowed_import_prefixes: normalize_allowed_import_prefixes(options.allowed_import_prefixes),
         capabilities: options.capabilities.nil? ? cfg.capabilities : normalize_capabilities(options.capabilities),
         library_profile: normalize_library_profile(options.library_profile || cfg.library_profile || :safe),
+        untrusted_function_profile: (options.untrusted_function_profile || cfg.untrusted_function_profile || :rails_minimal_plus).to_sym,
         access_policy: options.access_policy.nil? ? cfg.access_policy : normalize_access_policy(options.access_policy)
       )
 
@@ -88,6 +91,7 @@ module LogicaRb
       allowed_import_prefixes = app_cfg.respond_to?(:allowed_import_prefixes) ? app_cfg.allowed_import_prefixes : nil
       capabilities = app_cfg.respond_to?(:capabilities) ? app_cfg.capabilities : nil
       library_profile = app_cfg.respond_to?(:library_profile) ? app_cfg.library_profile : nil
+      untrusted_function_profile = app_cfg.respond_to?(:untrusted_function_profile) ? app_cfg.untrusted_function_profile : nil
       access_policy = app_cfg.respond_to?(:access_policy) ? app_cfg.access_policy : nil
 
       Configuration.new(
@@ -98,6 +102,7 @@ module LogicaRb
         allowed_import_prefixes: allowed_import_prefixes.nil? ? base.allowed_import_prefixes : normalize_allowed_import_prefixes(allowed_import_prefixes),
         capabilities: capabilities.nil? ? base.capabilities : normalize_capabilities(capabilities),
         library_profile: library_profile.nil? ? base.library_profile : normalize_library_profile(library_profile),
+        untrusted_function_profile: untrusted_function_profile.nil? ? base.untrusted_function_profile : untrusted_function_profile.to_sym,
         access_policy: access_policy.nil? ? base.access_policy : normalize_access_policy(access_policy)
       )
     end

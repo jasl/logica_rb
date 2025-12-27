@@ -118,6 +118,14 @@ module LogicaRb
 
         merged_policy = merge_access_policies(merged_policy, override_policy) if override_policy
 
+        if source && !trusted && access_policy.nil? && allowed_functions.nil?
+          cfg_profile = LogicaRb::Rails.configuration.untrusted_function_profile
+          if !cfg_profile.nil? && (merged_policy.nil? || merged_policy.allowed_functions.nil?)
+            merged_policy ||= LogicaRb::AccessPolicy.new
+            merged_policy = merged_policy.with(function_profile: cfg_profile.to_sym)
+          end
+        end
+
         trust_symbol = trusted ? :trusted : :untrusted
         merged_policy ||= LogicaRb::AccessPolicy.new
 
@@ -166,7 +174,7 @@ module LogicaRb
         return base if override.nil?
 
         updates = {}
-        %i[engine trust capabilities allowed_relations allowed_functions allowed_schemas denied_schemas tenant timeouts].each do |key|
+        %i[engine trust capabilities allowed_relations function_profile allowed_functions allowed_schemas denied_schemas tenant timeouts].each do |key|
           value = override.public_send(key)
           next if value.nil?
 

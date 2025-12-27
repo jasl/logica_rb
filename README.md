@@ -213,6 +213,9 @@ Rake tasks are file-based; `source:` is intended for runtime inputs and is not s
 - query-only: `format` must be `:query` unless `trusted: true`
 - imports disabled: `allow_imports` defaults to `false` unless `trusted: true` (or `allow_imports: true` explicitly)
 - query-only validation raises `LogicaRb::SqlSafety::Violation`
+- function allowlist (untrusted `source:`): by default only a Rails-minimal set of SQL functions is permitted (`:rails_minimal_plus`)
+  - `count`, `sum`, `avg`, `min`, `max`
+  - plus: `cast`, `coalesce`, `nullif`
 
 Operational safety suggestions for runtime-provided source:
 
@@ -221,6 +224,30 @@ Operational safety suggestions for runtime-provided source:
 - Do not splice request params directly into Logica source or `flags` without validation.
 - PostgreSQL: avoid granting roles like `pg_read_server_files` / `pg_execute_server_program` and avoid superuser for apps serving untrusted queries.
 - SQLite: do not enable extension loading, and consider SQLite defensive mode when validating untrusted SQL (if available in your SQLite build).
+
+Configure the untrusted function profile (Rails integration):
+
+```ruby
+LogicaRb::Rails.configure do |c|
+  # :rails_minimal (stricter) or :rails_minimal_plus (default)
+  c.untrusted_function_profile = :rails_minimal_plus
+end
+```
+
+Extend the allowlist for specific queries:
+
+```ruby
+require "set"
+
+base = LogicaRb::AccessPolicy.untrusted(allowed_relations: ["events"])
+allowed = base.resolved_allowed_functions(engine: "psql") || Set.new
+policy = base.with(allowed_functions: allowed | Set["date_trunc"])
+
+q = LogicaRb::Rails.query(source: src, predicate: "Report", trusted: false, access_policy: policy)
+q.result
+```
+
+Dangerous functions are always forbidden (denylist wins), even if misconfigured into an allowlist (e.g. SQLite `load_extension`, Postgres `pg_read_file`, `lo_import`, `dblink_connect`, ...).
 
 Plan docs:
 - `docs/PLAN_SCHEMA.md`

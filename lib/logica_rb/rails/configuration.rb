@@ -10,6 +10,7 @@ module LogicaRb
       :allowed_import_prefixes,
       :capabilities,
       :library_profile,
+      :untrusted_function_profile,
       :access_policy
     )
   end

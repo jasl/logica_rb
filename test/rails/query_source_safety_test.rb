@@ -25,7 +25,66 @@ class RailsQuerySourceSafetyTest < Minitest::Test
 
     err = assert_raises(LogicaRb::SqlSafety::Violation) { query.sql }
     assert_equal :function_not_allowed, err.reason
-    assert_equal "my_evil", err.details
+    assert_equal "my_evil", err.details&.dig(:function)
+  end
+
+  def test_untrusted_source_query_allows_rails_minimal_aggregations_by_default
+    begin
+      require "active_record"
+    rescue LoadError
+      skip "activerecord not installed"
+    end
+
+    require "logica_rb/rails"
+
+    ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
+    ActiveRecord::Base.connection.execute(<<~SQL)
+      CREATE TABLE events (
+        kind TEXT NOT NULL,
+        amount INTEGER NOT NULL
+      );
+    SQL
+    ActiveRecord::Base.connection.execute("INSERT INTO events (kind, amount) VALUES ('a', 10)")
+    ActiveRecord::Base.connection.execute("INSERT INTO events (kind, amount) VALUES ('a', 5)")
+    ActiveRecord::Base.connection.execute("INSERT INTO events (kind, amount) VALUES ('b', 7)")
+
+    source = <<~LOGICA
+      @Engine("sqlite");
+
+      Totals(kind:, total:, n:) :-
+        `((select kind, SUM(amount) as total, COUNT(*) as n from events group by kind))`(kind:, total:, n:);
+    LOGICA
+
+    query = LogicaRb::Rails.query(source: source, predicate: "Totals", trusted: false, allowed_relations: ["events"])
+    result = query.result
+
+    assert_equal %w[kind total n], result.columns
+    assert_equal [["a", 15, 2], ["b", 7, 1]], result.rows
+  end
+
+  def test_untrusted_source_query_rejects_lower_by_default
+    begin
+      require "active_record"
+    rescue LoadError
+      skip "activerecord not installed"
+    end
+
+    require "logica_rb/rails"
+
+    ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
+
+    source = <<~LOGICA
+      @Engine("sqlite");
+
+      Evil(x:) :-
+        `((select lower('x') as x))`(x:);
+    LOGICA
+
+    query = LogicaRb::Rails.query(source: source, predicate: "Evil", trusted: false)
+
+    err = assert_raises(LogicaRb::SqlSafety::Violation) { query.sql }
+    assert_equal :function_not_allowed, err.reason
+    assert_equal "lower", err.details&.dig(:function)
   end
 
   def test_untrusted_source_query_ignores_dangerous_function_names_in_strings

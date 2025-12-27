@@ -125,7 +125,9 @@ module LogicaRb
       end
 
       def self.normalize_forbidden_functions(value)
-        Array(value)
+        list = value.is_a?(Set) ? value.to_a : Array(value)
+
+        list
           .compact
           .map(&:to_s)
           .map(&:strip)
