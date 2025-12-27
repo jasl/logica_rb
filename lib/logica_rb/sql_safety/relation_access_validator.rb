@@ -12,19 +12,22 @@ module LogicaRb
       ).freeze
 
       TOKEN_REGEX = /
-        "(?:[^"]|"")*" |      # quoted identifier
+        "(?:[^"]|"")*" |          # double-quoted identifier
+        `(?:[^`]|``)*` |          # backtick-quoted identifier
+        \[(?:[^\]]|\]\])*\] |     # bracket-quoted identifier
         [A-Za-z_][A-Za-z0-9_$]* | # bare identifier or keyword
-        [(),.]                 # punctuation
+        [(),.]                    # punctuation
       /x.freeze
 
       def self.validate!(sql, engine:, allowed_relations: nil, allowed_schemas: nil, denied_schemas: nil)
         engine = engine.to_s
         sql = sql.to_s
 
-        cleaned = LogicaRb::SqlSafety::QueryOnlyValidator.strip_comments_and_literals(sql)
+        cleaned = LogicaRb::SqlSafety::QueryOnlyValidator.strip_comments_and_strings(sql)
         tokens = cleaned.scan(TOKEN_REGEX)
 
         cte_names = extract_cte_names(tokens)
+        relations_used = Set.new
 
         denied = normalize_ident_list(denied_schemas)
         denied ||= LogicaRb::AccessPolicy.default_denied_schemas(engine)
@@ -59,20 +62,23 @@ module LogicaRb
           if up == "FROM"
             in_from_at_depth[paren_depth] = true
             idx = parse_and_validate_relation(tokens, idx + 1, engine: engine, default_schema: default_schema, cte_names: cte_names,
-                                                      denied_set: denied_set, allowed_relations: allowed_relations_norm, allowed_schemas: allowed_schemas_norm)
+                                                      denied_set: denied_set, allowed_relations: allowed_relations_norm, allowed_schemas: allowed_schemas_norm,
+                                                      relations_used: relations_used)
             next
           end
 
           if up == "JOIN"
             in_from_at_depth[paren_depth] = true
             idx = parse_and_validate_relation(tokens, idx + 1, engine: engine, default_schema: default_schema, cte_names: cte_names,
-                                                      denied_set: denied_set, allowed_relations: allowed_relations_norm, allowed_schemas: allowed_schemas_norm)
+                                                      denied_set: denied_set, allowed_relations: allowed_relations_norm, allowed_schemas: allowed_schemas_norm,
+                                                      relations_used: relations_used)
             next
           end
 
           if tok == "," && in_from_at_depth[paren_depth]
             idx = parse_and_validate_relation(tokens, idx + 1, engine: engine, default_schema: default_schema, cte_names: cte_names,
-                                                      denied_set: denied_set, allowed_relations: allowed_relations_norm, allowed_schemas: allowed_schemas_norm)
+                                                      denied_set: denied_set, allowed_relations: allowed_relations_norm, allowed_schemas: allowed_schemas_norm,
+                                                      relations_used: relations_used)
             next
           end
 
@@ -83,10 +89,11 @@ module LogicaRb
           idx += 1
         end
 
-        nil
+        relations_used.to_a.sort
       end
 
-      def self.parse_and_validate_relation(tokens, idx, engine:, default_schema:, cte_names:, denied_set:, allowed_relations:, allowed_schemas:)
+      def self.parse_and_validate_relation(tokens, idx, engine:, default_schema:, cte_names:, denied_set:, allowed_relations:, allowed_schemas:,
+                                           relations_used:)
         idx = skip_join_noise(tokens, idx)
         return idx if idx >= tokens.length
 
@@ -118,6 +125,7 @@ module LogicaRb
         end
 
         effective_schema = (schema || default_schema).to_s
+        relations_used.add("#{effective_schema.downcase}.#{table.downcase}")
 
         if denied_set.include?(effective_schema) || denied_set.include?(table)
           raise LogicaRb::SqlSafety::Violation.new(
@@ -132,6 +140,85 @@ module LogicaRb
       end
       private_class_method :parse_and_validate_relation
 
+      def self.scan_relations(sql, engine:)
+        engine = engine.to_s
+        sql = sql.to_s
+
+        cleaned = LogicaRb::SqlSafety::QueryOnlyValidator.strip_comments_and_strings(sql)
+        tokens = cleaned.scan(TOKEN_REGEX)
+        cte_names = extract_cte_names(tokens)
+        default_schema = default_schema_for_engine(engine)
+
+        relations_used = Set.new
+
+        paren_depth = 0
+        in_from_at_depth = {}
+
+        idx = 0
+        while idx < tokens.length
+          tok = tokens[idx]
+
+          case tok
+          when "("
+            paren_depth += 1
+            idx += 1
+            next
+          when ")"
+            in_from_at_depth.delete(paren_depth)
+            paren_depth -= 1 if paren_depth.positive?
+            idx += 1
+            next
+          end
+
+          up = tok_upcase(tok)
+
+          if up == "FROM" || up == "JOIN" || (tok == "," && in_from_at_depth[paren_depth])
+            in_from_at_depth[paren_depth] = true
+            idx = scan_relation(tokens, idx + 1, default_schema: default_schema, cte_names: cte_names, relations_used: relations_used)
+            next
+          end
+
+          in_from_at_depth[paren_depth] = false if in_from_at_depth[paren_depth] && CLAUSE_END_KEYWORDS.include?(up)
+
+          idx += 1
+        end
+
+        relations_used.to_a.sort
+      end
+
+      def self.scan_relation(tokens, idx, default_schema:, cte_names:, relations_used:)
+        idx = skip_join_noise(tokens, idx)
+        return idx if idx >= tokens.length
+
+        tok = tokens[idx]
+        return idx if tok == "("
+
+        name1, idx = parse_identifier(tokens, idx)
+        return idx unless name1
+
+        return idx if idx < tokens.length && tokens[idx] == "("
+
+        schema = nil
+        table = name1
+
+        if idx < tokens.length && tokens[idx] == "."
+          schema = name1
+          name2, idx2 = parse_identifier(tokens, idx + 1)
+
+          return idx2 if name2.nil?
+
+          table = name2
+          idx = idx2
+        end
+
+        return idx if schema.nil? && cte_names.include?(table)
+
+        effective_schema = (schema || default_schema).to_s.downcase
+        relations_used.add("#{effective_schema}.#{table.downcase}")
+        idx
+      end
+      private_class_method :scan_relation
+
       def self.validate_allowed!(engine:, schema:, table:, allowed_relations:, allowed_schemas:, original_schema:)
         return nil if allowed_relations.nil? && allowed_schemas.nil?
 
@@ -143,7 +230,8 @@ module LogicaRb
             raise LogicaRb::SqlSafety::Violation.new(:relation_not_allowed, "SQL relation access is not allowed: #{relation}")
           end
 
-          return nil if allowed_relations.include?(qualified) || allowed_relations.include?(table)
+          return nil if allowed_relations.include?(qualified)
+          return nil if original_schema.nil? && allowed_relations.include?(table)
 
           raise LogicaRb::SqlSafety::Violation.new(:relation_not_allowed, "SQL relation access is not allowed: #{qualified}")
         end
@@ -242,7 +330,19 @@ module LogicaRb
         if tok.start_with?("\"") && tok.end_with?("\"") && tok.length >= 2
           raw = tok[1..-2]
           raw = raw.gsub("\"\"", "\"")
-          return [raw.downcase, idx + 1]
+          return [raw.strip.downcase, idx + 1]
+        end
+
+        if tok.start_with?("`") && tok.end_with?("`") && tok.length >= 2
+          raw = tok[1..-2]
+          raw = raw.gsub("``", "`")
+          return [raw.strip.downcase, idx + 1]
+        end
+
+        if tok.start_with?("[") && tok.end_with?("]") && tok.length >= 2
+          raw = tok[1..-2]
+          raw = raw.gsub("]]", "]")
+          return [raw.strip.downcase, idx + 1]
         end
 
         return [nil, idx] unless /\A[A-Za-z_][A-Za-z0-9_$]*\z/.match?(tok)

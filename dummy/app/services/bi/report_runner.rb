@@ -23,7 +23,7 @@ module Bi
       :default_flags
     )
 
-    RunResult = Data.define(:sql, :executed_sql, :result, :duration_ms, :row_count, :sql_digest)
+    RunResult = Data.define(:sql, :executed_sql, :result, :duration_ms, :row_count, :sql_digest, :functions_used)
 
     def initialize(report:, flags:, page:, per_page:)
       @report = report
@@ -38,9 +38,10 @@ module Bi
       flags = validate_and_normalize_flags!
       query = build_query(flags)
       sql = query.sql
+      functions_used = query.functions_used
       executed_sql = paginate_sql(sql, page: @page, per_page: @per_page, max_rows: max_rows_limit)
 
-      result = execute_select(executed_sql)
+      result = execute_select(executed_sql, access_policy: query.definition.access_policy)
       duration_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
       row_count = extract_row_count(result)
       sql_digest = Digest::SHA256.hexdigest(executed_sql.to_s)
@@ -51,7 +52,8 @@ module Bi
         result: result,
         duration_ms: duration_ms,
         row_count: row_count,
-        sql_digest: sql_digest
+        sql_digest: sql_digest,
+        functions_used: functions_used
       )
     end
 
@@ -122,11 +124,12 @@ module Bi
       SQL
     end
 
-    def execute_select(sql)
+    def execute_select(sql, access_policy:)
       return ActiveRecord::Base.connection.select_all(sql) unless untrusted_source?
 
       with_prevent_writes do
         conn = ActiveRecord::Base.connection
+        executor = LogicaRb::Rails::Executor.new(connection: conn)
 
         if conn.adapter_name.to_s.match?(/postg/i)
           conn.transaction(requires_new: true) do
@@ -135,10 +138,10 @@ module Bi
             conn.execute("SET LOCAL lock_timeout = '#{DEFAULT_LOCK_TIMEOUT_MS}ms'")
             conn.execute("SET LOCAL transaction_read_only = on")
             conn.execute("SET LOCAL app.tenant_id = '#{tenant_id_for_rls}'")
-            conn.select_all(sql)
+            executor.select_all(sql, access_policy: access_policy)
           end
         else
-          conn.select_all(sql)
+          executor.select_all(sql, access_policy: access_policy)
         end
       end
     end

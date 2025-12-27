@@ -11,15 +11,9 @@ class SqliteDbSmokeTest < Minitest::Test
   MANIFEST_PATH = File.expand_path("../fixtures_manifest.yml", __dir__)
   FIXTURES_ROOT = File.expand_path("../fixtures", __dir__)
 
-  SQLITE_UNSUPPORTED_UDF_PATTERNS = [
-    /\bArgMin\b/,
-    /\bDistinctListAgg\b/,
-    /\bArrayConcatAgg\b/,
-    /\bReadFile\b/,
-    /\bWriteFile\b/,
-    /\bRange\b/,
-    /\bSortList\b/,
-  ].freeze
+  UNSAFE_ENV_ALLOWLIST = {
+    "file_io" => "LOGICA_UNSAFE_IO",
+  }.freeze
 
   def manifest
     @manifest ||= YAML.load_file(MANIFEST_PATH)
@@ -58,14 +52,13 @@ class SqliteDbSmokeTest < Minitest::Test
 
     manifest.fetch("tests").fetch("sqlite").each do |entry|
       name = entry.fetch("name")
-      compilation = compile_case(entry)
-      plan_json = compilation.plan_json(pretty: true)
-
-      if SQLITE_UNSUPPORTED_UDF_PATTERNS.any? { |re| re.match?(plan_json) }
+      unsafe = Array(entry["unsafe"]).compact.map(&:to_s)
+      if unsafe.any? && !unsafe.all? { |cap| (env = UNSAFE_ENV_ALLOWLIST[cap]) && ENV[env] == "1" }
         next
       end
 
-      plan_hash = JSON.parse(plan_json)
+      compilation = compile_case(entry)
+      plan_hash = JSON.parse(compilation.plan_json(pretty: true))
 
       adapter = LogicaRb::DbSmoke::SqliteAdapter.build
       begin

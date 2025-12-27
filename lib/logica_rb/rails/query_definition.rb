@@ -34,6 +34,7 @@ module LogicaRb
         library_profile: nil,
         access_policy: nil,
         allowed_relations: nil,
+        allowed_functions: nil,
         allowed_schemas: nil,
         denied_schemas: nil,
         tenant: nil,
@@ -102,11 +103,12 @@ module LogicaRb
           end
 
         override_policy =
-          if allowed_relations.nil? && allowed_schemas.nil? && denied_schemas.nil? && tenant.nil? && timeouts.nil?
+          if allowed_relations.nil? && allowed_functions.nil? && allowed_schemas.nil? && denied_schemas.nil? && tenant.nil? && timeouts.nil?
             nil
           else
             LogicaRb::AccessPolicy.new(
               allowed_relations: allowed_relations,
+              allowed_functions: allowed_functions,
               allowed_schemas: allowed_schemas,
               denied_schemas: denied_schemas,
               tenant: tenant,
@@ -164,7 +166,7 @@ module LogicaRb
         return base if override.nil?
 
         updates = {}
-        %i[engine trust capabilities allowed_relations allowed_schemas denied_schemas tenant timeouts].each do |key|
+        %i[engine trust capabilities allowed_relations allowed_functions allowed_schemas denied_schemas tenant timeouts].each do |key|
           value = override.public_send(key)
           next if value.nil?
 

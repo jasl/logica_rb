@@ -66,6 +66,22 @@ module LogicaRb
         "plan" => plan.to_json(pretty: true),
       }
 
+      functions_used_by_predicate = {}
+      relations_used_by_predicate = {}
+      functions_used_union = []
+      relations_used_union = []
+
+      predicates.each do |p|
+        sql = query_sql_by_predicate.fetch(p)
+        funcs = LogicaRb::SqlSafety::FunctionAllowlistValidator.scan_functions(sql)
+        rels = LogicaRb::SqlSafety::RelationAccessValidator.scan_relations(sql, engine: resolved_engine)
+
+        functions_used_by_predicate[p] = funcs
+        relations_used_by_predicate[p] = rels
+        functions_used_union.concat(funcs)
+        relations_used_union.concat(rels)
+      end
+
       Compilation.new(
         schema_version: "logica_rb.compilation.v1",
         engine: resolved_engine,
@@ -74,6 +90,12 @@ module LogicaRb
         query_sql_by_predicate: query_sql_by_predicate,
         script_sql_by_predicate: script_sql_by_predicate,
         plan_by_predicate: plan_by_predicate,
+        analysis: {
+          "functions_used" => functions_used_union.uniq.sort,
+          "relations_used" => relations_used_union.uniq.sort,
+          "functions_used_by_predicate" => functions_used_by_predicate,
+          "relations_used_by_predicate" => relations_used_by_predicate,
+        },
         metadata: {
           "import_root" => import_root,
           "user_flags_keys" => effective_user_flags.keys.sort,

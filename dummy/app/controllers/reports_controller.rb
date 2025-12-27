@@ -122,6 +122,7 @@ class ReportsController < ApplicationController
       duration_ms: run_result.fetch(:duration_ms),
       row_count: run_result.fetch(:row_count),
       sql_digest: run_result.fetch(:sql_digest),
+      functions_used: run_result.fetch(:functions_used),
       created_at: Time.current
     )
 
@@ -255,7 +256,12 @@ class ReportsController < ApplicationController
     @executed_sql = run_result.executed_sql
     @result = run_result.result
 
-    { duration_ms: run_result.duration_ms, row_count: run_result.row_count, sql_digest: run_result.sql_digest }
+    {
+      duration_ms: run_result.duration_ms,
+      row_count: run_result.row_count,
+      sql_digest: run_result.sql_digest,
+      functions_used: run_result.functions_used,
+    }
   end
 
   def run_isolated_plan!(flags:)
@@ -274,6 +280,7 @@ class ReportsController < ApplicationController
 
     @sql = query.sql
     @plan_json = query.plan_json(pretty: true)
+    functions_used = query.functions_used
 
     outputs =
       Bi::IsolatedPlanRunner.new(
@@ -299,6 +306,7 @@ class ReportsController < ApplicationController
       duration_ms: duration_ms,
       row_count: row_count,
       sql_digest: Digest::SHA256.hexdigest(@plan_json.to_s),
+      functions_used: functions_used,
     }
   end
 

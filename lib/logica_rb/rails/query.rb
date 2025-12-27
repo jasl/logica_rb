@@ -19,6 +19,18 @@ module LogicaRb
         cache.fetch(@definition, connection: @connection)
       end
 
+      def functions_used
+        return @validated_functions_used if defined?(@validated_functions_used) && @validated_functions_used
+
+        compile.analysis&.fetch("functions_used", nil)
+      end
+
+      def relations_used
+        return @validated_relations_used if defined?(@validated_relations_used) && @validated_relations_used
+
+        compile.analysis&.fetch("relations_used", nil)
+      end
+
       def sql(format: :query)
         format = (format || :query).to_sym
         enforce_source_policy!(format: format)
@@ -98,10 +110,18 @@ module LogicaRb
         return nil if already_validated_query_sql?(sql, engine: engine)
 
         LogicaRb::SqlSafety::QueryOnlyValidator.validate!(sql, engine: engine, forbidden_functions: [])
-        LogicaRb::SqlSafety::ForbiddenFunctionsValidator.validate!(sql, engine: engine)
 
         policy = @definition.access_policy || LogicaRb::AccessPolicy.untrusted(allowed_relations: [])
-        LogicaRb::SqlSafety::RelationAccessValidator.validate!(
+        @validated_functions_used =
+          LogicaRb::SqlSafety::FunctionAllowlistValidator.validate!(
+            sql,
+            engine: engine,
+            allowed_functions: policy.effective_allowed_functions(engine: engine)
+          )
+
+        LogicaRb::SqlSafety::ForbiddenFunctionsValidator.validate!(sql, engine: engine)
+        @validated_relations_used =
+          LogicaRb::SqlSafety::RelationAccessValidator.validate!(
           sql,
           engine: engine,
           allowed_relations: policy.allowed_relations,

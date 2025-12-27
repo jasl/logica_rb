@@ -14,6 +14,7 @@ module LogicaRb
     :query_sql_by_predicate,
     :script_sql_by_predicate,
     :plan_by_predicate,
+    :analysis,
     :metadata
   ) do
     def sql(predicate_or_format = nil, format = :script)
@@ -72,6 +73,7 @@ module LogicaRb
         "query_sql_by_predicate" => query_sql_by_predicate,
         "script_sql_by_predicate" => script_sql_by_predicate,
         "plan_by_predicate" => plan_by_predicate&.transform_values { |p| p&.to_h },
+        "analysis" => analysis,
         "metadata" => metadata,
       }
     end

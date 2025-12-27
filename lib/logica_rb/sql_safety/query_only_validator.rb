@@ -29,6 +29,14 @@ module LogicaRb
 
       WORD_TOKEN = /[A-Za-z_][A-Za-z0-9_]*/.freeze
 
+      FUNCTION_TOKEN_REGEX = /
+        "(?:[^"]|"")*" |         # double-quoted identifier
+        `(?:[^`]|``)*` |         # backtick-quoted identifier
+        \[(?:[^\]]|\]\])*\] |    # bracket-quoted identifier
+        [A-Za-z_][A-Za-z0-9_]* | # bare identifier
+        [().]                    # punctuation
+      /x.freeze
+
       def self.validate!(sql, engine: nil, allow_explain: false, forbidden_functions: nil)
         sql = sql.to_s
         engine = engine.to_s
@@ -63,7 +71,8 @@ module LogicaRb
             normalize_forbidden_functions(forbidden_functions)
           end
 
-        hit_function = first_forbidden_function_call(cleaned, forbidden_functions_set)
+        cleaned_for_function_scan = strip_comments_and_strings(sql)
+        hit_function = first_forbidden_function_call(cleaned_for_function_scan, forbidden_functions_set)
         if hit_function
           raise LogicaRb::SqlSafety::Violation.new(:forbidden_function, "Disallowed SQL function: #{hit_function}")
         end
@@ -128,19 +137,43 @@ module LogicaRb
       def self.first_forbidden_function_call(cleaned_sql, forbidden_functions_set)
         return nil if forbidden_functions_set.empty?
 
-        tokens = cleaned_sql.scan(/[A-Za-z_][A-Za-z0-9_]*|[().]/)
+        tokens = cleaned_sql.scan(FUNCTION_TOKEN_REGEX)
         tokens.each_with_index do |tok, idx|
-          next unless WORD_TOKEN.match?(tok)
           next unless tokens[idx + 1] == "("
 
-          name = tok.downcase
+          name = normalize_identifier_token(tok)
+          next if name.nil?
           next unless forbidden_functions_set.include?(name)
 
-          return tok
+          return name
         end
 
         nil
       end
+
+      def self.normalize_identifier_token(tok)
+        return nil if tok.nil? || tok.empty?
+
+        if tok.start_with?("\"") && tok.end_with?("\"") && tok.length >= 2
+          raw = tok[1..-2].gsub("\"\"", "\"")
+          return raw.strip.downcase
+        end
+
+        if tok.start_with?("`") && tok.end_with?("`") && tok.length >= 2
+          raw = tok[1..-2].gsub("``", "`")
+          return raw.strip.downcase
+        end
+
+        if tok.start_with?("[") && tok.end_with?("]") && tok.length >= 2
+          raw = tok[1..-2].gsub("]]", "]")
+          return raw.strip.downcase
+        end
+
+        return nil unless WORD_TOKEN.match?(tok)
+
+        tok.downcase
+      end
+      private_class_method :normalize_identifier_token
 
       def self.strip_comments_and_literals(sql)
         s = sql.dup
@@ -282,6 +315,187 @@ module LogicaRb
 
               if c == 93 # "]"
                 if cn == 93 # "]]"
+                  s.setbyte(i, 32)
+                  s.setbyte(i + 1, 32)
+                  i += 2
+                  next
+                end
+
+                s.setbyte(i, 32)
+                i += 1
+                break
+              end
+
+              s.setbyte(i, 32) unless c == 10
+              i += 1
+            end
+            next
+          end
+
+          if b == 36 # "$"
+            tag_end = i + 1
+            while tag_end < s.bytesize
+              c = s.getbyte(tag_end)
+              break if c == 36
+              break unless (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95
+
+              tag_end += 1
+            end
+
+            if tag_end < s.bytesize && s.getbyte(tag_end) == 36
+              delim = s.byteslice(i, tag_end - i + 1)
+              (i..tag_end).each { |idx| s.setbyte(idx, 32) }
+
+              search_from = tag_end + 1
+              close_idx = s.index(delim, search_from)
+
+              if close_idx
+                (search_from...close_idx).each do |idx|
+                  s.setbyte(idx, 32) unless s.getbyte(idx) == 10
+                end
+                (close_idx...(close_idx + delim.bytesize)).each { |idx| s.setbyte(idx, 32) }
+                i = close_idx + delim.bytesize
+                next
+              end
+
+              (search_from...s.bytesize).each do |idx|
+                s.setbyte(idx, 32) unless s.getbyte(idx) == 10
+              end
+              break
+            end
+          end
+
+          i += 1
+        end
+
+        s.force_encoding(sql.encoding)
+      end
+
+      def self.strip_comments_and_strings(sql)
+        s = sql.dup
+        s = s.b
+
+        i = 0
+        while i < s.bytesize
+          b = s.getbyte(i)
+          nb = s.getbyte(i + 1)
+
+          if b == 34 # "\""
+            i += 1
+            while i < s.bytesize
+              c = s.getbyte(i)
+              cn = s.getbyte(i + 1)
+
+              if c == 34
+                if cn == 34 # "\"\""
+                  i += 2
+                  next
+                end
+
+                i += 1
+                break
+              end
+
+              i += 1
+            end
+            next
+          end
+
+          if b == 96 # "`"
+            i += 1
+            while i < s.bytesize
+              c = s.getbyte(i)
+              cn = s.getbyte(i + 1)
+
+              if c == 96
+                if cn == 96 # "``"
+                  i += 2
+                  next
+                end
+
+                i += 1
+                break
+              end
+
+              i += 1
+            end
+            next
+          end
+
+          if b == 91 # "["
+            i += 1
+            while i < s.bytesize
+              c = s.getbyte(i)
+              cn = s.getbyte(i + 1)
+
+              if c == 93 # "]"
+                if cn == 93 # "]]"
+                  i += 2
+                  next
+                end
+
+                i += 1
+                break
+              end
+
+              i += 1
+            end
+            next
+          end
+
+          if b == 45 && nb == 45 # "--"
+            s.setbyte(i, 32)
+            s.setbyte(i + 1, 32)
+            i += 2
+            while i < s.bytesize
+              c = s.getbyte(i)
+              break if c == 10 # "\n"
+              s.setbyte(i, 32)
+              i += 1
+            end
+            next
+          end
+
+          if b == 47 && nb == 42 # "/*"
+            depth = 1
+            s.setbyte(i, 32)
+            s.setbyte(i + 1, 32)
+            i += 2
+            while i < s.bytesize && depth.positive?
+              c = s.getbyte(i)
+              cn = s.getbyte(i + 1)
+
+              if c == 47 && cn == 42 # "/*"
+                s.setbyte(i, 32)
+                s.setbyte(i + 1, 32)
+                i += 2
+                depth += 1
+                next
+              end
+
+              if c == 42 && cn == 47 # "*/"
+                s.setbyte(i, 32)
+                s.setbyte(i + 1, 32)
+                i += 2
+                depth -= 1
+                next
+              end
+
+              s.setbyte(i, 32) unless c == 10 # keep newlines
+              i += 1
+            end
+            next
+          end
+
+          if b == 39 # "'"
+            s.setbyte(i, 32)
+            i += 1
+            while i < s.bytesize
+              c = s.getbyte(i)
+              cn = s.getbyte(i + 1)
+
+              if c == 39 # "'"
+                if cn == 39 # "''"
                   s.setbyte(i, 32)
                   s.setbyte(i + 1, 32)
                   i += 2

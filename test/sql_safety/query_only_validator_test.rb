@@ -77,6 +77,33 @@ class QueryOnlyValidatorTest < Minitest::Test
     end
   end
 
+  def test_rejects_quoted_dangerous_functions
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT \"pg_read_file\"('/etc/passwd')", engine: "psql")
+      end
+    assert_equal :forbidden_function, err.reason
+
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        sql = %q(SELECT "pg_catalog"."pg_read_file"('/etc/passwd'))
+        LogicaRb::SqlSafety::QueryOnlyValidator.validate!(sql, engine: "psql")
+      end
+    assert_equal :forbidden_function, err.reason
+
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT \"load_extension\"('x')", engine: "sqlite")
+      end
+    assert_equal :forbidden_function, err.reason
+
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT `load_extension`('x')", engine: "sqlite")
+      end
+    assert_equal :forbidden_function, err.reason
+  end
+
   def test_ignores_strings_and_comments
     LogicaRb::SqlSafety::QueryOnlyValidator.validate!(
       "SELECT 'DROP TABLE users; INSERT INTO x VALUES (1)' AS message\n",

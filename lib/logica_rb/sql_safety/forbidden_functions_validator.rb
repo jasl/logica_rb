@@ -8,7 +8,7 @@ module LogicaRb
         engine = engine.to_s
         engine = nil if engine.empty?
 
-        cleaned = LogicaRb::SqlSafety::QueryOnlyValidator.strip_comments_and_literals(sql)
+        cleaned = LogicaRb::SqlSafety::QueryOnlyValidator.strip_comments_and_strings(sql)
 
         forbidden_functions_set =
           if forbidden_functions.nil?

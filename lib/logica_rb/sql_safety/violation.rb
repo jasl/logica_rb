@@ -3,10 +3,11 @@
 module LogicaRb
   module SqlSafety
     class Violation < LogicaRb::Error
-      attr_reader :reason
+      attr_reader :reason, :details
 
-      def initialize(reason, message = nil)
+      def initialize(reason, message = nil, details: nil)
         @reason = reason
+        @details = details
         super(message || reason.to_s)
       end
     end
