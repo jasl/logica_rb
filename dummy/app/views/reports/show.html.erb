@@ -25,7 +25,42 @@
     <% end %>
 
     <div class="field">
+      <label>Report source (Logica)</label>
+      <div class="muted">
+        <%= @report.mode_file? ? "File:" : "Source:" %>
+        <code><%= @report_source_label %></code>
+      </div>
+      <% if @report_source_error %>
+        <div class="muted"><%= @report_source_error %></div>
+      <% end %>
+      <% if @report_source.present? %>
+        <pre class="code"><code><%= @report_source %></code></pre>
+      <% end %>
+    </div>
+
+    <div class="field">
       <%= label_tag :flags_json, "Flags (JSON)" %>
+      <div class="muted">
+        Flags are compile-time parameters passed to Logica compilation (user_flags). They must be declared in the report source with
+        <code>@DefineFlag</code> (otherwise compilation fails).
+        Prefer <code>FlagValue("name")</code> for values (it becomes a quoted SQL literal). Use <code>${name}</code> only for trusted raw substitution.
+        <pre class="code"><code>@DefineFlag("min_total_cents", "0");
+@DefineFlag("status", "placed");
+
+# Use as value (safe):
+min_total_cents = Cast(FlagValue("min_total_cents"), "INTEGER");
+status = FlagValue("status");</code></pre>
+        <pre class="code"><code>{ "min_total_cents": 1000, "status": "placed" }</code></pre>
+      </div>
+
+      <details class="muted">
+        <summary>Show this report's flags_schema/default_flags</summary>
+        <p class="muted">flags_schema:</p>
+        <pre class="code"><code><%= @flags_schema_json %></code></pre>
+        <p class="muted">default_flags:</p>
+        <pre class="code"><code><%= @default_flags_json %></code></pre>
+      </details>
+
       <%= text_area_tag :flags_json, @flags_json, class: "code-input", rows: 6 %>
     </div>
 

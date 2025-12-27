@@ -22,6 +22,8 @@ module LogicaRb
         @schema = schema
       end
 
+      attr_reader :conn
+
       def setup!
         @conn.exec("CREATE SCHEMA #{@schema};")
         @conn.exec("SET search_path TO #{@schema}, public;")
@@ -29,6 +31,18 @@ module LogicaRb
 
       def exec_script(sql)
         @conn.exec(rewrite_schema(sql.to_s))
+      end
+
+      def select_all(sql)
+        sql = sql.to_s.strip.sub(/;\s*\z/, "")
+        res = @conn.exec(rewrite_schema(sql))
+
+        {
+          "columns" => res.fields,
+          "rows" => res.values.map do |row|
+            row.map { |v| v.nil? || v == "NULL" ? nil : v.to_s }
+          end,
+        }
       end
 
       def close

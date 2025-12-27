@@ -1,6 +1,25 @@
 # frozen_string_literal: true
 
-rng = Random.new(42)
+seed = Integer(ENV.fetch("BI_SEED", "42"))
+customers_count = Integer(ENV.fetch("BI_CUSTOMERS", "50"))
+orders_count = Integer(ENV.fetch("BI_ORDERS", "600"))
+days = Integer(ENV.fetch("BI_DAYS", "90"))
+days = 1 if days < 1
+
+regions_env = ENV["BI_REGIONS"].to_s.strip
+default_regions = %w[North South East West].freeze
+regions =
+  if regions_env.empty?
+    default_regions
+  else
+    regions_env.split(/[,\s]+/).map(&:strip).reject(&:empty?).uniq
+  end
+regions = default_regions if regions.empty?
+
+srand(seed)
+rng = Random.new(seed)
+
+puts "BI seed config: BI_SEED=#{seed} BI_CUSTOMERS=#{customers_count} BI_ORDERS=#{orders_count} BI_DAYS=#{days} BI_REGIONS=#{regions.join(",")}"
 
 first_names = %w[
   Alex Casey Chris Dana Eli Finn Harper Jamie Jordan Kai Logan Morgan Quinn Riley Sam Taylor
@@ -8,22 +27,23 @@ first_names = %w[
 last_names = %w[
   Adams Baker Carter Davis Edwards Flores Garcia Harris Jackson Kim Lopez Miller Nguyen Patel Reed Smith Turner
 ].freeze
-regions = %w[North South East West].freeze
 statuses = %w[placed shipped delivered refunded].freeze
 
 unless Customer.exists? || Order.exists?
+  now = Time.current
+
   customers =
-    50.times.map do
+    customers_count.times.map do
       Customer.create!(
         name: "#{first_names.sample(random: rng)} #{last_names.sample(random: rng)}",
         region: regions.sample(random: rng),
-        created_at: Time.current - rng.rand(10..90).days,
-        updated_at: Time.current
+        created_at: now - rng.rand(0...days).days,
+        updated_at: now
       )
     end
 
-  600.times do
-    ordered_at = Time.current - rng.rand(0..60).days - rng.rand(0..86_399).seconds
+  orders_count.times do
+    ordered_at = now - rng.rand(0...days).days - rng.rand(0..86_399).seconds
     Order.create!(
       customer: customers.sample(random: rng),
       amount_cents: rng.rand(500..50_000),

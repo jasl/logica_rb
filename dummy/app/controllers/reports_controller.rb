@@ -2,6 +2,7 @@
 
 require "json"
 require "digest"
+require "pathname"
 
 class ReportsController < ApplicationController
   before_action :load_report, only: %i[show edit update run]
@@ -49,6 +50,8 @@ class ReportsController < ApplicationController
 
   def show
     assign_run_defaults
+    assign_report_source_preview
+    assign_flags_docs
     @can_run_isolated_plan = can_run_isolated_plan?
     @runs = recent_runs
   end
@@ -100,6 +103,8 @@ class ReportsController < ApplicationController
 
   def run
     assign_run_defaults
+    assign_report_source_preview
+    assign_flags_docs
     @can_run_isolated_plan = can_run_isolated_plan?
     @run_mode = params[:run_mode].presence || "query"
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -150,6 +155,46 @@ class ReportsController < ApplicationController
 
     @flags_json = params[:flags_json].presence || JSON.pretty_generate(@report.default_flags || {})
     @run_mode = params[:run_mode].presence || "query"
+  end
+
+  def assign_report_source_preview
+    if @report.mode_file?
+      file = @report.file.to_s
+      import_root = LogicaRb::Rails.configuration.import_root
+      resolved = resolve_logica_file_path(file, import_root: import_root)
+      @report_source_label = file
+      @report_source = File.exist?(resolved) ? File.binread(resolved) : nil
+      @report_source_error = @report_source ? nil : "Missing file: #{file}"
+    else
+      @report_source_label = "(inline source)"
+      @report_source = @report.source.to_s
+      @report_source_error = nil
+    end
+  rescue StandardError => e
+    @report_source_label = "(unavailable)"
+    @report_source = nil
+    @report_source_error = "Could not load source: #{e.class}: #{e.message}"
+  end
+
+  def resolve_logica_file_path(file, import_root:)
+    file = file.to_s
+    return File.expand_path(file) if file.empty?
+    return File.expand_path(file) if Pathname.new(file).absolute? || import_root.nil?
+
+    roots = import_root.is_a?(Array) ? import_root : [import_root]
+    roots.each do |root|
+      next if root.nil? || root.to_s.empty?
+
+      candidate = File.join(root.to_s, file)
+      return File.expand_path(candidate) if File.exist?(candidate)
+    end
+
+    File.expand_path(File.join(roots.first.to_s, file))
+  end
+
+  def assign_flags_docs
+    @flags_schema_json = JSON.pretty_generate(@report.flags_schema || {})
+    @default_flags_json = JSON.pretty_generate(@report.default_flags || {})
   end
 
   def recent_runs

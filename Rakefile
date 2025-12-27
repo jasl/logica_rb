@@ -9,7 +9,7 @@ require "bundler/gem_tasks"
 require "minitest/test_task"
 
 Minitest::TestTask.create do |t|
-  t.test_globs = ["test/*_test.rb", "test/sql_safety/**/*_test.rb", "test/db_smoke/**/*_test.rb", "test/parser/**/*_test.rb"]
+  t.test_globs = ["test/*_test.rb", "test/support/**/*_test.rb", "test/sql_safety/**/*_test.rb", "test/db_smoke/**/*_test.rb", "test/parser/**/*_test.rb"]
 end
 
 require "rubocop/rake_task"
@@ -51,6 +51,19 @@ namespace :test do
 
   desc "Run all DB smoke tests"
   task db_smoke: %i[db_smoke_sqlite db_smoke_psql]
+
+  desc "Run SQLite DB results tests"
+  task :db_results_sqlite do
+    sh({ "LOGICA_DB_RESULTS" => "1" }, "bundle exec ruby -Itest test/db_results/sqlite_results_test.rb")
+  end
+
+  desc "Run Postgres DB results tests (requires DATABASE_URL)"
+  task :db_results_psql do
+    sh({ "LOGICA_DB_RESULTS" => "1" }, "bundle exec ruby -Itest test/db_results/psql_results_test.rb")
+  end
+
+  desc "Run all DB results tests"
+  task db_results: %i[db_results_sqlite db_results_psql]
 end
 
 namespace :goldens do

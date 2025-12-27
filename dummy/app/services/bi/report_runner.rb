@@ -9,6 +9,7 @@ module Bi
     DEFAULT_PER_PAGE = 50
     DEFAULT_MAX_ROWS_UNTRUSTED = 1000
     DEFAULT_STATEMENT_TIMEOUT_MS = 3000
+    DEFAULT_LOCK_TIMEOUT_MS = 500
 
     ReportSpec = Data.define(
       :mode,
@@ -131,6 +132,8 @@ module Bi
           conn.transaction(requires_new: true) do
             # NOTE: SET LOCAL only lasts for the duration of the current transaction.
             conn.execute("SET LOCAL statement_timeout = '#{DEFAULT_STATEMENT_TIMEOUT_MS}ms'")
+            conn.execute("SET LOCAL lock_timeout = '#{DEFAULT_LOCK_TIMEOUT_MS}ms'")
+            conn.execute("SET LOCAL transaction_read_only = on")
             conn.select_all(sql)
           end
         else
@@ -171,7 +174,7 @@ module Bi
       flags = defaults.merge(provided)
 
       schema = normalize_optional_hash(@report.flags_schema)
-      return flags unless schema
+      return normalize_untyped_flags!(flags) unless schema
 
       unknown = flags.keys - schema.keys
       raise ArgumentError, "Unknown flags: #{unknown.sort.join(", ")}" if unknown.any?
@@ -200,6 +203,25 @@ module Bi
       normalize_hash(value)
     end
 
+    def normalize_untyped_flags!(flags)
+      flags.transform_values do |value|
+        case value
+        when String
+          value
+        when Integer, Float
+          value.to_s
+        when TrueClass, FalseClass
+          value ? "true" : "false"
+        when Date
+          value.iso8601
+        when nil
+          raise ArgumentError, "flags values may not be null (use an empty string instead)"
+        else
+          raise ArgumentError, "flags values must be scalar strings/numbers/bools (got: #{value.class})"
+        end
+      end
+    end
+
     def validate_and_normalize_flag_value!(key, spec, value)
       spec = normalize_hash(spec)
       type = spec.fetch("type", nil).to_s
@@ -212,14 +234,14 @@ module Bi
         max = spec["max"]
         raise ArgumentError, "flags[#{key}] must be >= #{min}" if !min.nil? && v < Integer(min)
         raise ArgumentError, "flags[#{key}] must be <= #{max}" if !max.nil? && v > Integer(max)
-        v
+        v.to_s
       when "float"
         v = Float(value)
         min = spec["min"]
         max = spec["max"]
         raise ArgumentError, "flags[#{key}] must be >= #{min}" if !min.nil? && v < Float(min)
         raise ArgumentError, "flags[#{key}] must be <= #{max}" if !max.nil? && v > Float(max)
-        v
+        v.to_s
       when "string"
         v = value.to_s
         min_len = spec["min_length"]

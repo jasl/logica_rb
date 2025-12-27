@@ -5,6 +5,10 @@ require "set"
 module LogicaRb
   module DbSmoke
     class ReferencePlanExecutor
+      def self.execute!(adapter, plan_hash)
+        new(plan_hash).execute!(adapter)
+      end
+
       def initialize(plan_hash)
         @plan = plan_hash
       end

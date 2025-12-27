@@ -11,11 +11,39 @@ This is a small Rails app living inside `logica_rb` to demonstrate:
 ```bash
 cd dummy
 bin/rails db:migrate
-bin/rails db:seed
+bin/rails db:seed:replant
 bin/rails server
 ```
 
 Then open `http://localhost:3000`.
+
+## Reset + seed (deterministic)
+
+Reset all tables and re-run seeds:
+
+```bash
+cd dummy
+bin/rails db:seed:replant
+```
+
+Control scale + seed (all deterministic for a given `BI_SEED`):
+
+```bash
+cd dummy
+BI_CUSTOMERS=200 BI_ORDERS=5000 BI_SEED=7 bin/rails db:seed:replant
+```
+
+Convenience tasks:
+
+```bash
+cd dummy
+bin/rake bi:seed
+bin/rake bi:seed:large
+```
+
+Quick manual verification:
+
+- Open `/reports` and run a report; the result + row count should match the seeded scale.
 
 ## Pages
 
@@ -42,7 +70,7 @@ When a report is `source` mode and `trusted: false`, execution is hardened:
 - Query-only SQL validation (blocks multi-statement and common DDL/DML keywords)
 - Imports disabled by default (`allow_imports: false`)
 - `prevent_writes` wrapper (uses `connected_to(role: :reading, prevent_writes: true)` when available, otherwise `while_preventing_writes`)
-- PostgreSQL: `SET LOCAL statement_timeout = '3000ms'` inside a transaction
+- PostgreSQL (inside a transaction): `SET LOCAL statement_timeout`, `SET LOCAL lock_timeout`, `SET LOCAL transaction_read_only = on`
 - Max rows cap (default `1000`) enforced via `LIMIT/OFFSET` pagination wrapper
 
 To enable imports for source-mode reports, the app must configure a whitelist:

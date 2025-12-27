@@ -23,6 +23,17 @@ module LogicaRb
         @db.execute_batch(sql.to_s)
       end
 
+      def select_all(sql)
+        sql = sql.to_s.strip.sub(/;\s*\z/, "")
+        header, *rows = @db.execute2(sql)
+        {
+          "columns" => Array(header).map(&:to_s),
+          "rows" => Array(rows).map do |row|
+            Array(row).map { |v| v.nil? ? nil : v.to_s }
+          end,
+        }
+      end
+
       def close
         @db.close
       end
@@ -32,6 +43,7 @@ module LogicaRb
         register_in_list!
         register_join_strings!
         register_split!
+        register_log!
         register_fingerprint!
         register_record_helpers!
       end
@@ -98,7 +110,13 @@ module LogicaRb
 
           delim = delimiter.to_s
           parts = text.to_s.split(delim)
-          func.result = JSON.generate(parts)
+          func.result = "[#{parts.map { |p| JSON.generate(p.to_s) }.join(", ")}]"
+        end
+      end
+
+      def register_log!
+        @db.create_function("LOG", 1) do |func, value|
+          func.result = value.nil? ? nil : Math.log(value.to_f)
         end
       end
 
