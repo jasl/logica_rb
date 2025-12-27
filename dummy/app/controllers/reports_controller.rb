@@ -123,6 +123,7 @@ class ReportsController < ApplicationController
       row_count: run_result.fetch(:row_count),
       sql_digest: run_result.fetch(:sql_digest),
       functions_used: run_result.fetch(:functions_used),
+      relations_used: run_result.fetch(:relations_used),
       created_at: Time.current
     )
 
@@ -156,6 +157,7 @@ class ReportsController < ApplicationController
 
     @flags_json = params[:flags_json].presence || JSON.pretty_generate(@report.default_flags || {})
     @run_mode = params[:run_mode].presence || "query"
+    @refresh = truthy_param?(params[:refresh])
   end
 
   def assign_report_source_preview
@@ -250,17 +252,21 @@ class ReportsController < ApplicationController
 
   def run_query!(flags:)
     runner = Bi::ReportRunner.new(report: @report, flags: flags, page: @page, per_page: @per_page)
-    run_result = runner.run!
+    run_result = runner.run!(refresh: @refresh)
 
     @sql = run_result.sql
     @executed_sql = run_result.executed_sql
     @result = run_result.result
+    @cached = run_result.cached
+    @functions_used = run_result.functions_used
+    @relations_used = run_result.relations_used
 
     {
       duration_ms: run_result.duration_ms,
       row_count: run_result.row_count,
       sql_digest: run_result.sql_digest,
       functions_used: run_result.functions_used,
+      relations_used: run_result.relations_used,
     }
   end
 
@@ -280,7 +286,8 @@ class ReportsController < ApplicationController
 
     @sql = query.sql
     @plan_json = query.plan_json(pretty: true)
-    functions_used = query.functions_used
+    functions_used = Array(query.functions_used)
+    relations_used = Array(query.relations_used)
 
     outputs =
       Bi::IsolatedPlanRunner.new(
@@ -292,6 +299,9 @@ class ReportsController < ApplicationController
 
     @result = outputs.fetch(@report.predicate.to_s)
     @executed_sql = nil
+    @cached = false
+    @functions_used = functions_used
+    @relations_used = relations_used
 
     row_count =
       if @result.respond_to?(:rows)
@@ -307,7 +317,13 @@ class ReportsController < ApplicationController
       row_count: row_count,
       sql_digest: Digest::SHA256.hexdigest(@plan_json.to_s),
       functions_used: functions_used,
+      relations_used: relations_used,
     }
+  end
+
+  def truthy_param?(value)
+    v = value.to_s.strip.downcase
+    v == "1" || v == "true" || v == "yes" || v == "on"
   end
 
   def ensure_built_in_reports!

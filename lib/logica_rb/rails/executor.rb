@@ -13,7 +13,14 @@ module LogicaRb
         raw = @connection.respond_to?(:raw_connection) ? @connection.raw_connection : nil
 
         if defined?(::SQLite3::Database) && raw.is_a?(::SQLite3::Database) && access_policy&.trust == :untrusted
-          LogicaRb::SqliteSafety::Authorizer.with_untrusted_policy(raw, access_policy) do
+          # Untrusted execution is hardened at the connection level (e.g. PRAGMA query_only/trusted_schema)
+          # and via a restrictive SQLite authorizer (defense in depth).
+          LogicaRb::SqliteSafety::Authorizer.with_authorizer(
+            raw,
+            capabilities: access_policy.effective_capabilities,
+            access_policy: access_policy,
+            harden: true
+          ) do
             @connection.select_all(sql)
           end
         else

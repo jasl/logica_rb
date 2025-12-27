@@ -74,6 +74,14 @@ status = FlagValue("status");</code></pre>
       <%= number_field_tag :per_page, @per_page, min: 1, max: Bi::ReportRunner::MAX_PER_PAGE, class: "text-input" %>
     </div>
 
+    <div class="field">
+      <label>Cache</label>
+      <div class="muted">
+        <%= check_box_tag :refresh, "1", !!@refresh %>
+        <%= label_tag :refresh, "Refresh (bypass cache for this run)" %>
+      </div>
+    </div>
+
     <%= submit_tag "Run report", class: "button" %>
   <% end %>
 
@@ -103,6 +111,18 @@ status = FlagValue("status");</code></pre>
 
   <% if @result %>
     <h2>Result</h2>
+    <% if !@cached.nil? %>
+      <p class="muted">cached: <code><%= @cached %></code></p>
+    <% end %>
+
+    <% if @functions_used || @relations_used %>
+      <details class="muted">
+        <summary>Query analysis</summary>
+        <p class="muted">functions_used: <code><%= JSON.generate(Array(@functions_used)) %></code></p>
+        <p class="muted">relations_used: <code><%= JSON.generate(Array(@relations_used)) %></code></p>
+      </details>
+    <% end %>
+
     <%= render "shared/result_table", result: @result %>
   <% end %>
 
@@ -116,6 +136,8 @@ status = FlagValue("status");</code></pre>
             <th>Status</th>
             <th>Duration</th>
             <th>Rows</th>
+            <th>Functions</th>
+            <th>Relations</th>
             <th>Error</th>
           </tr>
         </thead>
@@ -126,6 +148,8 @@ status = FlagValue("status");</code></pre>
               <td><%= run.status %></td>
               <td><%= run.duration_ms %>ms</td>
               <td><%= run.row_count %></td>
+              <td><%= Array(run.functions_used).join(", ") %></td>
+              <td><%= Array(run.respond_to?(:relations_used) ? run.relations_used : []).join(", ") %></td>
               <td><%= run.error_class %> <%= run.error_message %></td>
             </tr>
           <% end %>

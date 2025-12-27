@@ -2,6 +2,7 @@
 
 require "digest"
 require "date"
+require "json"
 
 module Bi
   class ReportRunner
@@ -10,6 +11,8 @@ module Bi
     DEFAULT_MAX_ROWS_UNTRUSTED = 1000
     DEFAULT_STATEMENT_TIMEOUT_MS = 3000
     DEFAULT_LOCK_TIMEOUT_MS = 500
+    DEFAULT_IDLE_IN_TX_TIMEOUT_MS = 5000
+    DEFAULT_REPORT_CACHE_TTL_SECONDS = 60
 
     ReportSpec = Data.define(
       :mode,
@@ -23,7 +26,7 @@ module Bi
       :default_flags
     )
 
-    RunResult = Data.define(:sql, :executed_sql, :result, :duration_ms, :row_count, :sql_digest, :functions_used)
+    RunResult = Data.define(:sql, :executed_sql, :result, :duration_ms, :row_count, :sql_digest, :functions_used, :relations_used, :cached)
 
     def initialize(report:, flags:, page:, per_page:)
       @report = report
@@ -32,19 +35,37 @@ module Bi
       @per_page = normalize_per_page(per_page)
     end
 
-    def run!
+    def run!(refresh: false)
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
       flags = validate_and_normalize_flags!
       query = build_query(flags)
       sql = query.sql
-      functions_used = query.functions_used
+      functions_used = Array(query.functions_used)
+      relations_used = Array(query.relations_used)
       executed_sql = paginate_sql(sql, page: @page, per_page: @per_page, max_rows: max_rows_limit)
 
-      result = execute_select(executed_sql, access_policy: query.definition.access_policy)
+      engine = query.compile.engine.to_s
+      sql_digest = Digest::SHA256.hexdigest(executed_sql.to_s)
+      flags_digest = Digest::SHA256.hexdigest(JSON.generate(canonicalize_hash(flags)))
+      tenant_id = tenant_id_for_rls
+
+      result, cached =
+        fetch_cached_result(
+          report_id: @report.id,
+          engine: engine,
+          sql_digest: sql_digest,
+          flags_digest: flags_digest,
+          page: @page,
+          per_page: @per_page,
+          tenant_id_for_rls: tenant_id,
+          refresh: refresh
+        ) do
+          execute_select(executed_sql, access_policy: query.definition.access_policy)
+        end
+
       duration_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round
       row_count = extract_row_count(result)
-      sql_digest = Digest::SHA256.hexdigest(executed_sql.to_s)
 
       RunResult.new(
         sql: sql,
@@ -53,11 +74,79 @@ module Bi
         duration_ms: duration_ms,
         row_count: row_count,
         sql_digest: sql_digest,
-        functions_used: functions_used
+        functions_used: functions_used,
+        relations_used: relations_used,
+        cached: cached
       )
     end
 
     private
+
+    def fetch_cached_result(report_id:, engine:, sql_digest:, flags_digest:, page:, per_page:, tenant_id_for_rls:, refresh: false)
+      ttl = report_cache_ttl_seconds
+      return [result_to_cache_value(yield), false] if ttl <= 0
+      return [result_to_cache_value(yield), false] if report_id.nil?
+
+      key =
+        [
+          "bi_report_result",
+          "v1",
+          report_id,
+          engine,
+          sql_digest,
+          flags_digest,
+          page,
+          per_page,
+          tenant_id_for_rls,
+        ].join(":")
+
+      cache = defined?(Rails) && Rails.respond_to?(:cache) ? Rails.cache : nil
+      return [result_to_cache_value(yield), false] unless cache
+
+      if !refresh
+        cached_value = cache.read(key)
+        return [cached_value, true] if cached_value.is_a?(Hash) && cached_value["columns"] && cached_value["rows"]
+      end
+
+      value = result_to_cache_value(yield)
+      cache.write(key, value, expires_in: ttl)
+      [value, false]
+    end
+
+    def report_cache_ttl_seconds
+      value = Integer(ENV.fetch("BI_REPORT_CACHE_TTL_SECONDS", DEFAULT_REPORT_CACHE_TTL_SECONDS.to_s))
+      value = 0 if value < 0
+      value
+    rescue ArgumentError, TypeError
+      DEFAULT_REPORT_CACHE_TTL_SECONDS
+    end
+
+    def result_to_cache_value(result)
+      if result.respond_to?(:columns) && result.respond_to?(:rows)
+        { "columns" => result.columns, "rows" => result.rows }
+      elsif result.is_a?(Hash) && result["columns"] && result["rows"]
+        { "columns" => result["columns"], "rows" => result["rows"] }
+      else
+        { "columns" => [], "rows" => [] }
+      end
+    end
+
+    def canonicalize_hash(value)
+      value = {} if value.nil?
+      return value unless value.is_a?(Hash)
+
+      value.each_with_object({}) do |(k, v), h|
+        h[k.to_s] =
+          case v
+          when Hash
+            canonicalize_hash(v)
+          when Array
+            v.map { |x| x.is_a?(Hash) ? canonicalize_hash(x) : x }
+          else
+            v
+          end
+      end.sort.to_h
+    end
 
     def normalize_page(value)
       value = value.to_i
@@ -136,6 +225,7 @@ module Bi
             # NOTE: SET LOCAL only lasts for the duration of the current transaction.
             conn.execute("SET LOCAL statement_timeout = '#{DEFAULT_STATEMENT_TIMEOUT_MS}ms'")
             conn.execute("SET LOCAL lock_timeout = '#{DEFAULT_LOCK_TIMEOUT_MS}ms'")
+            conn.execute("SET LOCAL idle_in_transaction_session_timeout = '#{idle_in_tx_timeout_ms}ms'")
             conn.execute("SET LOCAL transaction_read_only = on")
             conn.execute("SET LOCAL app.tenant_id = '#{tenant_id_for_rls}'")
             executor.select_all(sql, access_policy: access_policy)
@@ -150,6 +240,14 @@ module Bi
       Integer(ENV.fetch("BI_TENANT_ID", "1"))
     rescue ArgumentError, TypeError
       1
+    end
+
+    def idle_in_tx_timeout_ms
+      value = Integer(ENV.fetch("BI_IDLE_IN_TX_TIMEOUT_MS", DEFAULT_IDLE_IN_TX_TIMEOUT_MS.to_s))
+      value = 0 if value < 0
+      value
+    rescue ArgumentError, TypeError
+      DEFAULT_IDLE_IN_TX_TIMEOUT_MS
     end
 
     def with_prevent_writes

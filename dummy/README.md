@@ -73,6 +73,12 @@ When a report is `source` mode and `trusted: false`, execution is hardened:
 - PostgreSQL (inside a transaction): `SET LOCAL statement_timeout`, `SET LOCAL lock_timeout`, `SET LOCAL transaction_read_only = on`
 - Max rows cap (default `1000`) enforced via `LIMIT/OFFSET` pagination wrapper
 
+## Production recommendations (Postgres)
+
+If you deploy the “untrusted BI query” pattern on PostgreSQL, read the short hardening checklist:
+
+- `../docs/security/postgres_hardening.md`
+
 To enable imports for source-mode reports, the app must configure a whitelist:
 
 ```ruby

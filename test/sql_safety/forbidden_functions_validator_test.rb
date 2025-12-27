@@ -42,4 +42,3 @@ class ForbiddenFunctionsValidatorTest < Minitest::Test
     validate!("SELECT 1 /* pg_cancel_backend(123) */", engine: "psql")
   end
 end
-
