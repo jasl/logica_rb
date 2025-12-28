@@ -17,14 +17,18 @@ Gem::Specification.new do |spec|
   spec.metadata["homepage_uri"] = spec.homepage
 
   # Specify which files should be added to the gem when it is released.
-  # The `git ls-files -z` loads the files in the RubyGem that have been added into git.
-  gemspec = File.basename(__FILE__)
-  spec.files = IO.popen(%w[git ls-files -z], chdir: __dir__, err: IO::NULL) do |ls|
-    ls.readlines("\x0", chomp: true).reject do |f|
-      (f == gemspec) ||
-        f.start_with?(*%w[bin/ Gemfile .gitignore test/ .github/ .rubocop.yml])
+  spec.files =
+    Dir.chdir(__dir__) do
+      files = []
+
+      files.concat(Dir.glob("lib/**/*", File::FNM_DOTMATCH))
+      files.concat(Dir.glob("exe/**/*", File::FNM_DOTMATCH))
+      files.concat(%w[README.md LICENSE.txt])
+      files.concat(Dir.glob("docs/**/*", File::FNM_DOTMATCH))
+      files.concat(Dir.glob("sig/**/*", File::FNM_DOTMATCH))
+
+      files.select { |f| File.file?(f) }.uniq.sort
     end
-  end
   spec.bindir = "exe"
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]

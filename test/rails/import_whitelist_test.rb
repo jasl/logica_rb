@@ -39,6 +39,40 @@ class RailsImportWhitelistTest < Minitest::Test
     end
   end
 
+  def test_source_allow_imports_rejects_empty_allowed_import_prefixes
+    begin
+      require "active_record"
+    rescue LoadError
+      skip "activerecord not installed"
+    end
+
+    require "logica_rb/rails"
+
+    ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
+
+    Dir.mktmpdir do |dir|
+      LogicaRb::Rails.configure do |c|
+        c.import_root = dir
+        c.allowed_import_prefixes = []
+      end
+
+      query =
+        LogicaRb::Rails.query(
+          source: "import allowed.dep.Val; Test(v:) :- Val(v:);",
+          predicate: "Test",
+          allow_imports: true
+        )
+
+      err = assert_raises(ArgumentError) { query.sql }
+      assert_match(/allowed_import_prefixes/i, err.message)
+    ensure
+      LogicaRb::Rails.configure do |c|
+        c.import_root = nil
+        c.allowed_import_prefixes = nil
+      end
+    end
+  end
+
   def test_rejects_source_imports_outside_whitelist
     begin
       require "active_record"

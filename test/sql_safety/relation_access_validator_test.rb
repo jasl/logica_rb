@@ -45,6 +45,32 @@ class RelationAccessValidatorTest < Minitest::Test
     assert_match(/information_schema/i, err.message)
   end
 
+  def test_denied_relations_are_denied_even_if_allowlisted_psql
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        validate!(
+          "SELECT * FROM pg_catalog.pg_class",
+          engine: "psql",
+          allowed_relations: ["pg_catalog.pg_class"]
+        )
+      end
+
+    assert_equal :denied_schema, err.reason
+    assert_match(/pg_catalog/i, err.message)
+
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        validate!(
+          "SELECT * FROM pg_catalog.pg_class",
+          engine: "psql",
+          allowed_schemas: ["pg_catalog"]
+        )
+      end
+
+    assert_equal :denied_schema, err.reason
+    assert_match(/pg_catalog/i, err.message)
+  end
+
   def test_rejects_quoted_denied_schemas
     err =
       assert_raises(LogicaRb::SqlSafety::Violation) do
@@ -80,6 +106,20 @@ class RelationAccessValidatorTest < Minitest::Test
       end
 
     assert_match(/secret\.orders/i, err.message)
+  end
+
+  def test_denied_relations_are_denied_even_if_allowlisted_sqlite
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        validate!(
+          "SELECT * FROM sqlite_master",
+          engine: "sqlite",
+          allowed_relations: ["sqlite_master"]
+        )
+      end
+
+    assert_equal :denied_schema, err.reason
+    assert_match(/sqlite_master/i, err.message)
   end
 
   def test_does_not_allow_schema_escape_from_bare_table_allowlist

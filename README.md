@@ -200,10 +200,13 @@ Rake tasks are file-based; `source:` is intended for runtime inputs and is not s
 
 ### Safety notes
 
+- The strongest safety guarantees apply to **runtime-provided** `source:` queries in **untrusted** mode (`trusted: false`). For `trusted: true` (or file-based workflows), treat the generated SQL as trusted code.
+- This gem provides *guardrails* (SQL validation + allow/deny lists), but **authorization is still your job**: tenant isolation / RLS / data access policies must be enforced by your app + database (roles, GRANTs, RLS, views, etc).
 - `LogicaRb::Rails::Query#relation` uses `Arel.sql` to wrap the compiled subquery. Treat compilation output as trusted code, and do **not** pass untrusted user input into Logica flags without validation.
 - `ActiveRecord::Relation#with` also accepts `Arel.sql(...)` for SQL literals, but this must only wrap known-safe SQL. Do not interpolate request params/model attributes/etc. into SQL strings.
 - Default `library_profile: :safe` excludes Logica library rules that perform file IO / external execution / console side effects. Enable explicitly via `LogicaRb::Rails.configure { |c| c.library_profile = :full }` (or per-query `library_profile: :full`) only when you trust the source.
 - For runtime-provided `source:` with `trusted: false`, `SqlExpr` and other dangerous built-ins are rejected by default. If you intentionally need them, you must opt in explicitly via `capabilities:` (e.g. `capabilities: [:sql_expr]`).
+- Rails `prevent_writes` is a client-side safeguard to reduce accidental writes; it is **not** a substitute for DB-level read-only enforcement.
 
 ### BI/后台自定义查询（source 模式）
 
