@@ -127,3 +127,49 @@ namespace :goldens do
     end
   end
 end
+
+namespace :release do
+  desc "Build and install the gem in a temp dir, then run basic checks"
+  task :sanity do
+    require "fileutils"
+
+    require_relative "lib/logica_rb/version"
+
+    version = LogicaRb::VERSION
+    gemspec = File.expand_path("logica_rb.gemspec", __dir__)
+
+    Dir.chdir(__dir__) do
+      sh "gem build #{gemspec}"
+
+      gem_file = File.expand_path("logica_rb-#{version}.gem", __dir__)
+      install_dir = File.expand_path("tmp/gem_install", __dir__)
+      FileUtils.rm_rf(install_dir)
+
+      sh "gem install #{gem_file} --install-dir #{install_dir} --no-document"
+
+      clean_env = {
+        "GEM_HOME" => install_dir,
+        "GEM_PATH" => install_dir,
+        "PATH" => "#{install_dir}/bin:#{ENV.fetch("PATH", "")}",
+        "BUNDLE_GEMFILE" => "",
+        "BUNDLE_BIN_PATH" => "",
+        "BUNDLER_VERSION" => "",
+        "RUBYLIB" => "",
+        "RUBYOPT" => "",
+      }
+
+      require "bundler"
+
+      Bundler.with_unbundled_env do
+        sh clean_env, %(ruby -e 'require "logica_rb"; puts LogicaRb::VERSION')
+        sh clean_env, "logica --help"
+
+        begin
+          sh clean_env, %(ruby -e 'require "rails"; require "generators/logica_rb/install/install_generator"')
+        rescue StandardError
+          warn "Skipping generator require check (rails not available)."
+        end
+      end
+    end
+  end
+end

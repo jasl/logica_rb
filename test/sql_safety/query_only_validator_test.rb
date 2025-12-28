@@ -3,6 +3,14 @@
 require "test_helper"
 
 class QueryOnlyValidatorTest < Minitest::Test
+  def test_rejects_empty_sql
+    err = assert_raises(LogicaRb::SqlSafety::Violation) do
+      LogicaRb::SqlSafety::QueryOnlyValidator.validate!(" \n\t")
+    end
+
+    assert_equal :empty_sql, err.reason
+  end
+
   def test_allows_select_with_and_values
     LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT 1\n")
     LogicaRb::SqlSafety::QueryOnlyValidator.validate!("WITH t AS (SELECT 1 AS x) SELECT x FROM t\n")
@@ -38,12 +46,20 @@ class QueryOnlyValidatorTest < Minitest::Test
   end
 
   def test_engine_specific_keywords
+    %w[ATTACH DETACH].each do |kw|
+      assert_raises(LogicaRb::SqlSafety::Violation, "expected #{kw} to be rejected") do
+        LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT 1 #{kw} 2", engine: "sqlite")
+      end
+    end
+
     assert_raises(LogicaRb::SqlSafety::Violation) do
       LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT 1 PRAGMA 2", engine: "sqlite")
     end
 
-    assert_raises(LogicaRb::SqlSafety::Violation) do
-      LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT 1 COPY 2", engine: "psql")
+    %w[COPY DO CALL].each do |kw|
+      assert_raises(LogicaRb::SqlSafety::Violation, "expected #{kw} to be rejected") do
+        LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT 1 #{kw} 2", engine: "psql")
+      end
     end
   end
 
@@ -126,6 +142,12 @@ class QueryOnlyValidatorTest < Minitest::Test
         LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT `load_extension`('x')", engine: "sqlite")
       end
     assert_equal :forbidden_function, err.reason
+
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT [load_extension]('x')", engine: "sqlite")
+      end
+    assert_equal :forbidden_function, err.reason
   end
 
   def test_ignores_strings_and_comments
@@ -153,5 +175,80 @@ class QueryOnlyValidatorTest < Minitest::Test
       "SELECT 1 /* load_extension('x') */\n",
       engine: "sqlite"
     )
+  end
+
+  def test_ignores_dollar_quoted_strings_psql
+    LogicaRb::SqlSafety::QueryOnlyValidator.validate!(
+      "SELECT $tag$; DROP TABLE users; --$tag$ AS s\n",
+      engine: "psql"
+    )
+  end
+
+  def test_unterminated_dollar_quoted_strings_do_not_crash
+    LogicaRb::SqlSafety::QueryOnlyValidator.validate!(
+      "SELECT $tag$; DROP TABLE users; -- no close\n",
+      engine: "psql"
+    )
+  end
+
+  def test_nested_block_comments_do_not_trigger_semicolon_detection
+    sql = <<~SQL
+      SELECT 1 /* outer ; /* inner ; */ still in outer ; */ AS x
+    SQL
+
+    LogicaRb::SqlSafety::QueryOnlyValidator.validate!(sql, engine: "sqlite")
+  end
+
+  def test_custom_forbidden_functions_list_is_supported
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT my_evil(1)", engine: "sqlite", forbidden_functions: ["my_evil"])
+      end
+
+    assert_equal :forbidden_function, err.reason
+    assert_match(/my_evil/i, err.message)
+  end
+
+  def test_quoted_identifiers_with_escapes_are_handled_in_function_scan
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        LogicaRb::SqlSafety::QueryOnlyValidator.validate!(%(SELECT "a""b"(1)), engine: "sqlite", forbidden_functions: ['a"b'])
+      end
+    assert_equal :forbidden_function, err.reason
+
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT `a``b`(1)", engine: "sqlite", forbidden_functions: ["a`b"])
+      end
+    assert_equal :forbidden_function, err.reason
+
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        LogicaRb::SqlSafety::QueryOnlyValidator.validate!("SELECT [a]]b](1)", engine: "sqlite", forbidden_functions: ["a]b"])
+      end
+    assert_equal :forbidden_function, err.reason
+  end
+
+  def test_fuzz_does_not_crash
+    rng = Random.new(42)
+    atoms = [
+      " ", "\n", "\t",
+      "'", "\"", "`", "[", "]", "(", ")", ";", ".", ",",
+      "--", "/*", "*/",
+      "$", "$tag$",
+      "A", "Z", "a", "z", "0", "9", "_",
+      "雪", "€", "β",
+    ].freeze
+
+    250.times do
+      fragment = Array.new(rng.rand(0..120)) { atoms.sample(random: rng) }.join
+      sql = "SELECT #{fragment}"
+
+      begin
+        LogicaRb::SqlSafety::QueryOnlyValidator.validate!(sql, engine: "psql", allow_explain: true)
+      rescue LogicaRb::SqlSafety::Violation
+        # expected sometimes
+      end
+    end
   end
 end

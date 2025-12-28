@@ -183,12 +183,16 @@ module LogicaRb
           help
           version
 
-	        Options:
-	          --engine=sqlite|psql       Override @Engine/default (default sqlite).
-	          --format=query|script|plan Output format for print.
-	          --import-root=PATH         Override LOGICAPATH import root.
-	          --output=FILE              Write output to file (stdout by default).
-	          --no-color                 Disable ANSI color output.
+        Options:
+          --engine=sqlite|psql       Override @Engine/default (default sqlite).
+          --format=query|script|plan Output format for print.
+          --import-root=PATH         Override LOGICAPATH import root.
+          --output=FILE              Write output to file (stdout by default).
+          --no-color                 Disable ANSI color output.
+
+        Notes:
+          Imports are resolved via --import-root/LOGICAPATH. The CLI is file-based and does not expose allow_imports.
+          For runtime-provided source in untrusted mode, use the Rails API (trusted: false) and configure allowed_import_prefixes.
 
         User flags:
           Use -- to separate Logica flags (defined by @DefineFlag) from CLI options.

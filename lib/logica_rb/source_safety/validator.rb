@@ -75,6 +75,12 @@ module LogicaRb
             yield predicate_name if predicate_name.is_a?(String) && !predicate_name.empty?
           end
 
+          predicate = obj["predicate"]
+          if predicate.is_a?(Hash)
+            predicate_name = predicate["predicate_name"]
+            yield predicate_name if predicate_name.is_a?(String) && !predicate_name.empty?
+          end
+
           obj.each_value { |v| each_call_predicate_name(v, &block) }
         end
       end

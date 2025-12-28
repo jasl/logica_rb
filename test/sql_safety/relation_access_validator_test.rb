@@ -7,6 +7,97 @@ class RelationAccessValidatorTest < Minitest::Test
     LogicaRb::SqlSafety::RelationAccessValidator.validate!(sql, **opts)
   end
 
+  def test_allows_comma_separated_relations
+    validate!(
+      "SELECT * FROM bi.orders, bi.orders WHERE 1 = 1",
+      engine: "psql",
+      allowed_relations: ["bi.orders"]
+    )
+  end
+
+  def test_rejects_invalid_relation_after_dot
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        validate!(
+          "SELECT * FROM public.",
+          engine: "psql",
+          allowed_relations: ["public.orders"]
+        )
+      end
+
+    assert_equal :invalid_relation, err.reason
+  end
+
+  def test_rejects_when_allowed_relations_is_empty
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        validate!(
+          "SELECT * FROM bi.orders",
+          engine: "psql",
+          allowed_relations: []
+        )
+      end
+
+    assert_equal :relation_not_allowed, err.reason
+  end
+
+  def test_allowed_schemas_empty_rejected
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        validate!(
+          "SELECT * FROM orders",
+          engine: "psql",
+          allowed_schemas: []
+        )
+      end
+
+    assert_equal :schema_not_allowed, err.reason
+  end
+
+  def test_allowed_schemas_must_include_default_schema
+    err =
+      assert_raises(LogicaRb::SqlSafety::Violation) do
+        validate!(
+          "SELECT * FROM orders",
+          engine: "psql",
+          allowed_schemas: ["bi"]
+        )
+      end
+
+    assert_equal :schema_not_allowed, err.reason
+    assert_match(/public/i, err.message)
+  end
+
+  def test_skips_join_noise_like_only
+    validate!(
+      "SELECT * FROM ONLY bi.orders",
+      engine: "psql",
+      allowed_relations: ["bi.orders"]
+    )
+  end
+
+  def test_parses_backtick_and_bracket_quoted_relations
+    validate!(
+      "SELECT * FROM `bi`.`orders`",
+      engine: "psql",
+      allowed_relations: ["bi.orders"]
+    )
+
+    validate!(
+      "SELECT * FROM [bi].[orders]",
+      engine: "psql",
+      allowed_relations: ["bi.orders"]
+    )
+  end
+
+  def test_recursive_cte_with_column_list_is_not_treated_as_relation
+    validate!(
+      "WITH RECURSIVE t(x) AS (SELECT 1) SELECT * FROM t",
+      engine: "psql",
+      allowed_relations: []
+    )
+  end
+
   def test_allows_explicit_allowlisted_relation
     validate!(
       "SELECT * FROM bi.orders",

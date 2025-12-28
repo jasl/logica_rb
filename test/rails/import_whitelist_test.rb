@@ -116,6 +116,45 @@ class RailsImportWhitelistTest < Minitest::Test
     end
   end
 
+  def test_rejects_invalid_import_paths_even_with_allowlist
+    begin
+      require "active_record"
+    rescue LoadError
+      skip "activerecord not installed"
+    end
+
+    require "logica_rb/rails"
+
+    ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
+
+    Dir.mktmpdir do |dir|
+      LogicaRb::Rails.configure do |c|
+        c.import_root = dir
+        c.allowed_import_prefixes = ["allowed"]
+      end
+
+      sources = [
+        "import ../evil.Dep; Test(v:) :- v = 1;",
+        "import /abs.evil.Dep; Test(v:) :- v = 1;",
+        "import allowed..evil.Dep; Test(v:) :- v = 1;",
+        "import allowed.evil..Dep; Test(v:) :- v = 1;",
+        "import allowed.\u2603.Dep; Test(v:) :- v = 1;",
+      ]
+
+      sources.each do |source|
+        query = LogicaRb::Rails.query(source: source, predicate: "Test", allow_imports: true)
+
+        err = assert_raises(LogicaRb::Parser::ParsingException) { query.sql }
+        assert_match(/Invalid import path segment/i, err.message)
+      end
+    ensure
+      LogicaRb::Rails.configure do |c|
+        c.import_root = nil
+        c.allowed_import_prefixes = nil
+      end
+    end
+  end
+
   def test_allows_source_imports_in_whitelist
     begin
       require "active_record"

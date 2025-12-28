@@ -23,7 +23,7 @@ Gem::Specification.new do |spec|
 
       files.concat(Dir.glob("lib/**/*", File::FNM_DOTMATCH))
       files.concat(Dir.glob("exe/**/*", File::FNM_DOTMATCH))
-      files.concat(%w[README.md LICENSE.txt])
+      files.concat(%w[README.md CHANGELOG.md SECURITY.md LICENSE.txt])
       files.concat(Dir.glob("docs/**/*", File::FNM_DOTMATCH))
       files.concat(Dir.glob("sig/**/*", File::FNM_DOTMATCH))
 
