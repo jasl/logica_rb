@@ -1,8 +1,47 @@
 # frozen_string_literal: true
 
+require "json"
+
 module LogicaRb
   module Util
     module_function
+
+    JSON_PRETTY_OPTIONS = {
+      indent: " ",
+      space: " ",
+      space_before: "",
+      object_nl: "\n",
+      array_nl: "\n",
+    }.freeze
+    private_constant :JSON_PRETTY_OPTIONS
+
+    def json_dump(obj, pretty: true)
+      sorted = sort_keys_recursive(obj)
+      return JSON.generate(sorted) + "\n" unless pretty
+
+      JSON.pretty_generate(sorted, **JSON_PRETTY_OPTIONS) + "\n"
+    end
+
+    def normalize_optional_string(value)
+      return nil if value.nil?
+
+      str =
+        if value.respond_to?(:to_path)
+          value.to_path
+        else
+          value.to_s
+        end
+
+      str = str.to_s.strip
+      return nil if str.empty?
+
+      str
+    end
+
+    def join_outputs(outputs)
+      trimmed = outputs.map { |text| text.to_s.sub(/\n+\z/, "") }
+      trimmed.join("\n\n") + "\n"
+    end
 
     def deep_copy(obj)
       case obj

@@ -114,13 +114,7 @@ module LogicaRb
     end
 
     def self.normalize_capabilities(value)
-      Array(value)
-        .compact
-        .map { |c| c.is_a?(Symbol) ? c.to_s : c.to_s }
-        .map(&:strip)
-        .reject(&:empty?)
-        .map(&:to_sym)
-        .uniq
+      LogicaRb::AccessPolicy.normalize_capabilities(value)
     end
 
     def self.normalize_library_profile(value)

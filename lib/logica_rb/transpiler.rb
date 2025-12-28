@@ -150,30 +150,29 @@ module LogicaRb
     end
 
     def self.join_outputs(outputs)
-      trimmed = outputs.map { |text| text.to_s.sub(/\n+\z/, "") }
-      trimmed.join("\n\n") + "\n"
+      LogicaRb::Util.join_outputs(outputs)
     end
 
-      def self.normalize_sql_text(text)
-        text.to_s.sub(/\n+\z/, "") + "\n"
-      end
+    def self.normalize_sql_text(text)
+      text.to_s.sub(/\n+\z/, "") + "\n"
+    end
 
-      def self.resolve_engine(parsed_rules, user_flags:, engine_override: nil)
-        return engine_override if engine_override
+    def self.resolve_engine(parsed_rules, user_flags:, engine_override: nil)
+      return engine_override if engine_override
 
-        default_engine = user_flags.fetch("logica_default_engine", "sqlite")
-        annotations = Compiler::Annotations.extract_annotations(parsed_rules, restrict_to: ["@Engine"])
-        engines = annotations.fetch("@Engine").keys
-        return default_engine if engines.empty?
-        if engines.length > 1
-          rule_text = annotations["@Engine"].values.first["__rule_text"]
-          raise Compiler::RuleTranslate::RuleCompileException.new(
-            "Single @Engine must be provided. Provided: #{engines}",
-            rule_text
-          )
-        end
-        engines.first
+      default_engine = user_flags.fetch("logica_default_engine", "sqlite")
+      annotations = Compiler::Annotations.extract_annotations(parsed_rules, restrict_to: ["@Engine"])
+      engines = annotations.fetch("@Engine").keys
+      return default_engine if engines.empty?
+      if engines.length > 1
+        rule_text = annotations["@Engine"].values.first["__rule_text"]
+        raise Compiler::RuleTranslate::RuleCompileException.new(
+          "Single @Engine must be provided. Provided: #{engines}",
+          rule_text
+        )
       end
+      engines.first
+    end
 
     def self.normalize_library_profile(value)
       profile = (value || :safe).to_sym
@@ -183,14 +182,7 @@ module LogicaRb
     end
 
     def self.normalize_capabilities(value)
-      Array(value)
-        .compact
-        .map { |c| c.is_a?(Symbol) ? c : c.to_s }
-        .map(&:to_s)
-        .map(&:strip)
-        .reject(&:empty?)
-        .map(&:to_sym)
-        .uniq
+      LogicaRb::AccessPolicy.normalize_capabilities(value)
     end
 
     def self.rewrite_engine_annotations(parsed_rules, engine_override)

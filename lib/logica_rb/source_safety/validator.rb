@@ -58,14 +58,7 @@ module LogicaRb
       private_class_method :validate_ground_annotations!
 
       def self.normalize_capabilities(value)
-        Array(value)
-          .compact
-          .map { |c| c.is_a?(Symbol) ? c : c.to_s }
-          .map(&:to_s)
-          .map(&:strip)
-          .reject(&:empty?)
-          .map(&:to_sym)
-          .to_set
+        LogicaRb::AccessPolicy.normalize_capabilities(value).to_set
       end
       private_class_method :normalize_capabilities
 

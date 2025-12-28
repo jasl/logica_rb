@@ -7,12 +7,6 @@ require_relative "util"
 
 module LogicaRb
   class PlanBuilder
-    TYPE_ORDER = {
-      "data" => 0,
-      "intermediate" => 1,
-      "final" => 2,
-    }.freeze
-
     def self.from_executions(executions, engine:, final_predicates: nil)
       final_predicates ||= executions.map(&:main_predicate)
       final_predicates = normalize_predicates(final_predicates)
@@ -133,7 +127,7 @@ module LogicaRb
       result.sort_by do |entry|
         type = entry.respond_to?(:type) ? entry.type : entry["type"]
         name = entry.respond_to?(:name) ? entry.name : entry["name"]
-        [TYPE_ORDER.fetch(type.to_s, 9), name.to_s]
+        [Plan::TYPE_ORDER.fetch(type.to_s, 9), name.to_s]
       end
     end
 

@@ -27,7 +27,7 @@ module LogicaRb
       tenant: nil,
       timeouts: nil
     )
-      engine = normalize_optional_string(engine)
+      engine = Util.normalize_optional_string(engine)
       trust = normalize_optional_symbol(trust)
       function_profile = normalize_optional_symbol(function_profile)
 
@@ -66,8 +66,8 @@ module LogicaRb
     end
 
     def cache_key_data(engine: nil)
-      resolved_engine = (engine.nil? ? self.engine : normalize_optional_string(engine)).to_s
-      resolved_function_profile = resolved_function_profile()
+      resolved_engine = (engine.nil? ? self.engine : Util.normalize_optional_string(engine)).to_s
+      resolved_function_profile = resolved_function_profile
 
       resolved_allowed_functions = resolved_allowed_functions(engine: resolved_engine)
       allowed_functions_key = resolved_allowed_functions.nil? ? nil : resolved_allowed_functions.map(&:to_s).sort
@@ -102,13 +102,11 @@ module LogicaRb
     end
 
     def resolved_allowed_functions(engine: nil)
-      resolved_engine = normalize_optional_string(engine) || self.engine
+      resolved_engine = Util.normalize_optional_string(engine) || self.engine
 
-      if !allowed_functions.nil?
-        return resolve_allowed_functions_override(allowed_functions, engine: resolved_engine)
-      end
+      return resolve_allowed_functions_override(allowed_functions, engine: resolved_engine) if allowed_functions
 
-      case resolved_function_profile()
+      case resolved_function_profile
       when :rails_minimal
         LogicaRb::AccessPolicy::RAILS_MINIMAL_ALLOWED_FUNCTIONS
       when :rails_minimal_plus
@@ -120,10 +118,6 @@ module LogicaRb
       else
         raise ArgumentError, "Unknown function_profile: #{function_profile.inspect}"
       end
-    end
-
-    def effective_allowed_functions(engine: nil)
-      resolved_allowed_functions(engine: engine)
     end
 
     def effective_capabilities
@@ -143,11 +137,6 @@ module LogicaRb
       end
     end
 
-    def self.default_allowed_functions(engine)
-      # Legacy helper; prefer `resolved_allowed_functions` with a function_profile.
-      LogicaRb::AccessPolicy::RAILS_MINIMAL_PLUS_ALLOWED_FUNCTIONS.to_a.sort
-    end
-
     def self.normalize_capabilities(value)
       Array(value)
         .compact
@@ -160,22 +149,6 @@ module LogicaRb
     end
 
     private
-
-    def normalize_optional_string(value)
-      return nil if value.nil?
-
-      str =
-        if value.respond_to?(:to_path)
-          value.to_path
-        else
-          value.to_s
-        end
-
-      str = str.strip
-      return nil if str.empty?
-
-      str
-    end
 
     def normalize_optional_symbol(value)
       return nil if value.nil?
@@ -213,7 +186,7 @@ module LogicaRb
 
       if value.is_a?(Hash)
         value.each_with_object({}) do |(k, v), h|
-          key = normalize_optional_string(k) || "*"
+          key = Util.normalize_optional_string(k) || "*"
           key = key.strip.downcase
 
           list = normalize_identifier_list(v) || []
@@ -239,7 +212,7 @@ module LogicaRb
     private :resolved_function_profile
 
     def resolve_allowed_functions_override(value, engine: nil)
-      resolved_engine = normalize_optional_string(engine) || self.engine
+      resolved_engine = Util.normalize_optional_string(engine) || self.engine
       resolved_engine = resolved_engine.to_s.strip.downcase
 
       if value.is_a?(Hash)

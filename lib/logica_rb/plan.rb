@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "json"
-
 require_relative "util"
 
 module LogicaRb
@@ -16,7 +14,7 @@ module LogicaRb
     :iterations,
     :config
   ) do
-    TYPE_ORDER = {
+    self::TYPE_ORDER = {
       "data" => 0,
       "intermediate" => 1,
       "final" => 2,
@@ -41,17 +39,7 @@ module LogicaRb
     end
 
     def self.json_dump(obj, pretty: true)
-      sorted = LogicaRb::Util.sort_keys_recursive(obj)
-      return JSON.generate(sorted) + "\n" unless pretty
-
-      JSON.pretty_generate(
-        sorted,
-        indent: " ",
-        space: " ",
-        space_before: "",
-        object_nl: "\n",
-        array_nl: "\n"
-      ) + "\n"
+      LogicaRb::Util.json_dump(obj, pretty: pretty)
     end
 
     private
@@ -107,7 +95,7 @@ module LogicaRb
     def normalize_config(config)
       list = Array(config).map { |entry| normalize_node(entry) }
       list.sort_by do |row|
-        [TYPE_ORDER.fetch(row["type"], 9), row["name"]]
+        [self.class::TYPE_ORDER.fetch(row["type"], 9), row["name"]]
       end
     end
 

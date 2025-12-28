@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "json"
-
 require_relative "util"
 require_relative "errors"
 
@@ -26,7 +24,7 @@ module LogicaRb
       end
 
       if predicate.nil?
-        return join_outputs(final_predicates.map { |p| sql(p, format) })
+        return LogicaRb::Util.join_outputs(final_predicates.map { |p| sql(p, format) })
       end
 
       predicate = predicate.to_s
@@ -83,24 +81,7 @@ module LogicaRb
     end
 
     def self.json_dump(obj, pretty: true)
-      sorted = LogicaRb::Util.sort_keys_recursive(obj)
-      return JSON.generate(sorted) + "\n" unless pretty
-
-      JSON.pretty_generate(
-        sorted,
-        indent: " ",
-        space: " ",
-        space_before: "",
-        object_nl: "\n",
-        array_nl: "\n"
-      ) + "\n"
-    end
-
-    private
-
-    def join_outputs(outputs)
-      trimmed = outputs.map { |text| text.to_s.sub(/\n+\z/, "") }
-      trimmed.join("\n\n") + "\n"
+      LogicaRb::Util.json_dump(obj, pretty: pretty)
     end
   end
 end

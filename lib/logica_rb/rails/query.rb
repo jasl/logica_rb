@@ -20,13 +20,13 @@ module LogicaRb
       end
 
       def functions_used
-        return @validated_functions_used if defined?(@validated_functions_used) && @validated_functions_used
+        return @validated_functions_used if @validated_functions_used
 
         compile.analysis&.fetch("functions_used", nil)
       end
 
       def relations_used
-        return @validated_relations_used if defined?(@validated_relations_used) && @validated_relations_used
+        return @validated_relations_used if @validated_relations_used
 
         compile.analysis&.fetch("relations_used", nil)
       end
@@ -130,12 +130,12 @@ module LogicaRb
 
         @validated_relations_used =
           LogicaRb::SqlSafety::RelationAccessValidator.validate!(
-          sql,
-          engine: engine,
-          allowed_relations: policy.allowed_relations,
-          allowed_schemas: policy.allowed_schemas,
-          denied_schemas: policy.effective_denied_schemas(engine: engine)
-        )
+            sql,
+            engine: engine,
+            allowed_relations: policy.allowed_relations,
+            allowed_schemas: policy.allowed_schemas,
+            denied_schemas: policy.effective_denied_schemas(engine: engine)
+          )
         @validated_query_sql = sql
         @validated_query_engine = engine.to_s
       end

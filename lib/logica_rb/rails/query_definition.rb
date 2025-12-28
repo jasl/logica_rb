@@ -40,8 +40,8 @@ module LogicaRb
         tenant: nil,
         timeouts: nil
       )
-        file = normalize_optional_string(file)
-        source = normalize_optional_string(source)
+        file = LogicaRb::Util.normalize_optional_string(file)
+        source = LogicaRb::Util.normalize_optional_string(source)
         predicate = predicate.to_s
         raise ArgumentError, "predicate must be provided" if predicate.empty?
 
@@ -154,20 +154,6 @@ module LogicaRb
       end
 
       private
-
-      def normalize_optional_string(value)
-        return nil if value.nil?
-
-        str =
-          if value.respond_to?(:to_path)
-            value.to_path
-          else
-            value.to_s
-          end
-
-        return nil if str.empty?
-        str
-      end
 
       def merge_access_policies(base, override)
         return override if base.nil?

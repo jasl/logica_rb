@@ -41,7 +41,7 @@ module LogicaRb
 
         allow_imports = !!definition.allow_imports
         library_profile = (definition.library_profile || :safe).to_sym
-        capabilities = Array(definition.capabilities).compact.map { |c| c.is_a?(Symbol) ? c.to_s : c.to_s }.map(&:strip).reject(&:empty?).sort
+        capabilities = LogicaRb::AccessPolicy.normalize_capabilities(definition.capabilities).map(&:to_s).sort
 
         base = {
           cache_mode: cache_mode.to_s,
